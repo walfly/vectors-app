@@ -33,5 +33,12 @@
     "eslint-config-next": "16.0.7",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "protobufjs",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }
