@@ -4,9 +4,10 @@
 
 | | |
 |---|---|
-| **Document Version** | 1.0 |
-| **Date** | December 5, 2025 |
+| **Document Version** | 1.1 |
+| **Date** | December 6, 2025 |
 | **Status** | Draft for Review |
+| **Architecture** | TypeScript Full-Stack (Next.js) |
 
 ---
 
@@ -154,37 +155,95 @@ Deep-dive into the hypothesis that semantic concepts correspond to linear direct
 
 ## 6. Technical Requirements
 
-### 6.1 Frontend Architecture
+### 6.1 Architecture Overview
 
-- **Framework:** Next.js 14+ (App Router) with TypeScript for server-side rendering, API routes, and type safety
+This is a **full-stack TypeScript application** built entirely in Next.js with no separate backend services. All ML inference, API routes, and rendering are handled within a single Next.js deployment. This approach provides:
+
+- **Single codebase:** All code in TypeScript for consistency and type safety
+- **Simplified deployment:** One Vercel project, no infrastructure orchestration
+- **Reduced costs:** No separate ML server or container hosting
+- **Faster iteration:** Changes deploy in seconds, not minutes
+
+### 6.2 Frontend Stack
+
+- **Framework:** Next.js 14+ (App Router) with TypeScript
 - **React Version:** React 18+ with Server Components for optimal performance
 - **3D Visualization:** Three.js with React Three Fiber for WebGL-powered interactive graphics
 - **2D Charts:** D3.js for heatmaps, scatter plots, and custom visualizations
 - **State Management:** Zustand for lightweight, performant client-side state handling
 - **Styling:** Tailwind CSS with custom design tokens for consistent, responsive UI
-- **Deployment:** Optimized for Vercel with Edge Functions for low-latency API responses
 
-### 6.2 Backend Architecture
+### 6.3 ML & Embedding Infrastructure (TypeScript)
 
-- **API Framework:** FastAPI (Python) for high-performance async endpoints
-- **Embedding Generation:** Sentence Transformers library with pre-loaded models
-- **Dimensionality Reduction:** scikit-learn for PCA, UMAP library for UMAP projections
-- **Vector Database:** Qdrant or Pinecone for nearest neighbor search demonstrations
-- **Caching:** Redis for caching common embeddings and reducing latency
+All machine learning runs in JavaScript/TypeScript—no Python required.
 
-### 6.3 Infrastructure
+| Capability | Library | Notes |
+|------------|---------|-------|
+| **Embedding Generation** | `@xenova/transformers` | Hugging Face Transformers.js, runs in Node.js API routes |
+| **Fallback Embeddings** | OpenAI/Cohere API | Optional, for higher quality when needed |
+| **Dimensionality Reduction** | `umap-js`, `ml-pca` | Pure JS implementations of UMAP and PCA |
+| **Vector Math** | Custom utilities | Cosine similarity, Euclidean distance, arithmetic |
+| **Nearest Neighbor** | Custom brute-force | Optimized TypeScript for ~10k vocabulary |
 
-- **Hosting:** Vercel (Next.js frontend with Edge/Serverless functions) + Railway or Render (Python backend for ML models)
-- **CDN:** Cloudflare for static asset delivery and DDoS protection
-- **Model Serving:** GPU-enabled instances for real-time embedding generation
-- **Monitoring:** Datadog or Grafana for performance monitoring and alerting
+**Recommended Model:** `Xenova/all-MiniLM-L6-v2`
+- 384 dimensions
+- ~80MB model size
+- Good balance of speed and quality
+- Runs in ~100-200ms after warm-up
 
-### 6.4 Performance Requirements
+### 6.4 Infrastructure
 
-- Embedding generation latency: <200ms for single inputs
-- 3D visualization render: 60fps on modern browsers
-- Initial page load: <3 seconds on 3G connections
-- Concurrent user support: 1,000+ simultaneous users
+- **Hosting:** Vercel (single deployment for entire application)
+- **Caching:** Vercel KV (Redis-compatible) for embedding cache
+- **Database (optional):** Vercel Postgres or Supabase for vocabulary storage and user data
+- **Edge Functions:** Low-latency API routes for lightweight operations (vector math, cache lookups)
+- **Serverless Functions:** Standard Node.js runtime for ML inference (1GB memory, 30s timeout)
+- **Monitoring:** Vercel Analytics + Vercel Logs for performance monitoring
+
+### 6.5 Key Dependencies
+
+```json
+{
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "@react-three/fiber": "^8.15.0",
+    "@react-three/drei": "^9.88.0",
+    "three": "^0.158.0",
+    "@xenova/transformers": "^2.17.0",
+    "umap-js": "^1.4.0",
+    "ml-pca": "^4.1.1",
+    "zustand": "^4.4.0",
+    "d3": "^7.8.0",
+    "@vercel/kv": "^1.0.0"
+  }
+}
+```
+
+### 6.6 Performance Requirements
+
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Embedding generation (warm) | <200ms | After model is loaded |
+| Embedding generation (cold) | <5s | First request loads model |
+| 3D visualization | 60fps | With 100+ points on modern browsers |
+| Initial page load | <3s | On 4G connections |
+| Time to interactive | <2s | Core functionality available |
+| Concurrent users | 1,000+ | Via Vercel's serverless scaling |
+
+### 6.7 API Routes (Next.js)
+
+All API endpoints are Next.js Route Handlers in the `app/api/` directory:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/embeddings` | POST | Generate embeddings from text input |
+| `/api/reduce` | POST | Reduce high-dimensional vectors to 2D/3D |
+| `/api/similarity` | POST | Calculate similarity between vectors |
+| `/api/nearest` | POST | Find nearest neighbors in vocabulary |
+| `/api/arithmetic` | POST | Perform vector arithmetic operations |
+| `/api/health` | GET | Health check and model status |
+| `/api/warm` | GET | Pre-load model (called by cron) |
 
 ---
 
@@ -237,9 +296,11 @@ Deep-dive into the hypothesis that semantic concepts correspond to linear direct
 
 | Risk | Severity | Impact | Mitigation |
 |------|----------|--------|------------|
-| High embedding API costs | High | Unsustainable operating costs | Use local models, implement caching, rate limiting |
+| Serverless cold starts | High | Slow first request (~3-5s for model loading) | Implement warm-up cron job, use smaller models, show loading state |
 | WebGL performance issues | Medium | Poor UX on older devices | Provide 2D fallback, progressive enhancement |
 | Concept too abstract | Medium | Users still confused after use | Extensive user testing, iterative UX improvement |
+| Transformers.js model limitations | Medium | Smaller models less accurate than Python alternatives | Offer optional OpenAI API fallback for higher quality |
+| Serverless memory limits | Low | Large batches fail | Limit batch sizes, chunk large requests |
 | Embedding model changes | Low | Pre-computed examples break | Version-pin models, abstract model layer |
 
 ---
@@ -268,8 +329,32 @@ VectorVerse aims to become the go-to educational platform for understanding not 
 - **Cosine Similarity:** A measure of similarity between two vectors based on the cosine of the angle between them
 - **Dimensionality Reduction:** Techniques (PCA, t-SNE, UMAP) for projecting high-dimensional data into 2D or 3D for visualization
 - **Nearest Neighbor Search:** Finding the most similar vectors to a query vector in embedding space
+- **Transformers.js:** Hugging Face library that runs transformer models in JavaScript/TypeScript
 
-### 12.2 References
+### 12.2 Technology Decision: TypeScript-Only Architecture
+
+**Why no Python backend?**
+
+| Consideration | Python Backend | TypeScript-Only |
+|--------------|----------------|-----------------|
+| Deployment complexity | Two services to deploy/monitor | Single Vercel deployment |
+| Cold start latency | Separate cold starts | One cold start |
+| Development experience | Context switching between languages | Single language, unified types |
+| Hosting costs | Separate ML server ($50-200/mo) | Included in Vercel plan |
+| Model quality | Full PyTorch/TensorFlow models | Smaller ONNX models |
+| Team requirements | Python + TypeScript expertise | TypeScript only |
+
+**Trade-offs accepted:**
+- Slightly lower embedding quality (mitigated by optional OpenAI fallback)
+- Longer cold starts for ML routes (mitigated by warm-up cron)
+- Limited to models that run in ONNX/Transformers.js
+
+**Why this is right for VectorVerse:**
+- Educational platform prioritizes UX over model sophistication
+- Simpler architecture = faster iteration on learning features
+- Lower costs = sustainable as a free educational resource
+
+### 12.3 References
 
 - Mikolov et al. (2013) - "Efficient Estimation of Word Representations in Vector Space" (Word2Vec paper)
 - Pennington et al. (2014) - "GloVe: Global Vectors for Word Representation"
