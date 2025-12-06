@@ -1,16 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This repository contains a [Next.js](https://nextjs.org) project under `apps/web`, bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
 This project uses **pnpm** as the recommended package manager.
 
-Install dependencies:
+From the repository root, install dependencies:
 
 ```bash
 pnpm install
 ```
 
-Run the development server:
+Then either run the app from the app directory:
+
+```bash
+cd apps/web
+pnpm dev
+```
+
+or use the workspace script from the repository root:
 
 ```bash
 pnpm dev
@@ -18,14 +25,14 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `apps/web/src/app/page.tsx`. The page auto-updates as you edit the file.
 
 ## Project structure
 
-The app is built with the Next.js App Router using a `src/` directory and TypeScript in strict mode. Key folders:
+The app is built with the Next.js App Router using a `src/` directory and TypeScript in strict mode. The main application files live under `apps/web`. Key folders:
 
 ```text
-src/
+apps/web/src/
 ├── app/
 │   ├── api/
 │   │   └── embeddings/        # Route handler lives here
