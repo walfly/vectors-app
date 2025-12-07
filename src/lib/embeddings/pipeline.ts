@@ -1,3 +1,5 @@
+const { pipeline } = require("@xenova/transformers");
+
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
 export type EmbeddingsPipeline = (
@@ -18,12 +20,11 @@ const state: EmbeddingsPipelineState = {
 };
 
 function startEmbeddingsPipelineInitialization() {
-  const initPromise = import("@xenova/transformers")
-    .then((mod) => mod.pipeline("feature-extraction", MODEL_ID))
-    .then((fn) => {
+  const initPromise = pipeline("feature-extraction", MODEL_ID)
+    .then((fn: EmbeddingsPipeline) => {
       state.pipeline = fn as EmbeddingsPipeline;
     })
-    .catch((error) => {
+    .catch((error: Error) => {
       const normalizedError =
         error instanceof Error ? error : new Error(String(error));
 
@@ -31,10 +32,7 @@ function startEmbeddingsPipelineInitialization() {
 
       // Log initialization failures at the source so they are visible
       // even if callers only inspect aggregated status.
-      console.error(
-        "Embeddings pipeline initialization failed",
-        normalizedError,
-      );
+      console.error("Embeddings pipeline initialization failed", normalizedError);
     })
     .finally(() => {
       state.initPromise = null;
