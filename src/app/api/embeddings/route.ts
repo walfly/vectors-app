@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { pipeline } from "@xenova/transformers";
+
+import {
+  MODEL_ID,
+  ensureEmbeddingsPipelineInitializing,
+  getEmbeddingsPipeline,
+  getEmbeddingsPipelineError,
+  isEmbeddingsPipelineReady,
+} from "../../../lib/embeddings/pipeline";
 
 export const runtime = "nodejs";
-
-const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 const MAX_INPUTS = 64;
 const MAX_INPUT_LENGTH = 1024; // characters
 
@@ -19,42 +24,6 @@ type ErrorResponseBody = {
   status?: "initializing";
   model?: string;
 };
-
-type EmbeddingsPipeline = (
-  inputs: string[],
-  options?: { pooling?: string; normalize?: boolean }
-) => Promise<unknown>;
-
-// Lazily initialized and cached Transformers.js pipeline.
-// The underlying model is loaded once per server instance and then reused
-// across subsequent requests.
-let embeddingsPipeline: EmbeddingsPipeline | null = null;
-let embeddingsPipelineInitPromise: Promise<void> | null = null;
-let embeddingsPipelineInitError: Error | null = null;
-
-function ensureEmbeddingsPipelineInitializing() {
-  if (embeddingsPipeline || embeddingsPipelineInitPromise || embeddingsPipelineInitError) {
-    return;
-  }
-
-  const initPromise = pipeline("feature-extraction", MODEL_ID)
-    .then((fn) => {
-      embeddingsPipeline = fn as EmbeddingsPipeline;
-    })
-    .catch((error) => {
-      embeddingsPipelineInitError =
-        error instanceof Error ? error : new Error(String(error));
-    })
-    .finally(() => {
-      embeddingsPipelineInitPromise = null;
-    });
-
-  embeddingsPipelineInitPromise = initPromise;
-}
-
-function isEmbeddingsPipelineReady() {
-  return embeddingsPipeline !== null;
-}
 
 function parseInputs(body: unknown): string[] | ErrorResponseBody {
   if (body === null || typeof body !== "object") {
@@ -129,10 +98,12 @@ export async function POST(request: NextRequest) {
   // Ensure the embeddings model is initializing in the background.
   ensureEmbeddingsPipelineInitializing();
 
-  if (embeddingsPipelineInitError) {
+  const initError = getEmbeddingsPipelineError();
+
+  if (initError) {
     return buildErrorResponse(500, {
       error: "Failed to initialize embeddings model.",
-      details: embeddingsPipelineInitError.message,
+      details: initError.message,
     });
   }
 
@@ -152,7 +123,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const readyEmbeddingsPipeline = embeddingsPipeline as EmbeddingsPipeline;
+    const readyEmbeddingsPipeline = getEmbeddingsPipeline();
+
+    if (!readyEmbeddingsPipeline) {
+      return buildErrorResponse(500, {
+        error: "Embeddings model is not ready.",
+      });
+    }
 
     const rawOutput = (await readyEmbeddingsPipeline(parsedInputs, {
       pooling: "mean",
