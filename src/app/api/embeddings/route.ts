@@ -21,7 +21,7 @@ type ErrorResponseBody = {
 };
 
 type EmbeddingsPipeline = (
-  inputs: string | string[],
+  inputs: string[],
   options?: { pooling?: string; normalize?: boolean }
 ) => Promise<unknown>;
 
@@ -57,13 +57,9 @@ function isEmbeddingsPipelineReady() {
 }
 
 async function waitForEmbeddingsPipelineReady() {
-  if (isEmbeddingsPipelineReady() || !embeddingsPipelineInitPromise) {
-    return;
-  }
-
   const currentInitPromise = embeddingsPipelineInitPromise;
 
-  if (!currentInitPromise) {
+  if (isEmbeddingsPipelineReady() || !currentInitPromise) {
     return;
   }
 
@@ -140,32 +136,14 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse(400, parsedInputs);
   }
 
-  // Ensure the embeddings model is initializing in the background.
+  // Ensure the embeddings model is initialized before running the pipeline.
   ensureEmbeddingsPipelineInitializing();
-
-  if (!isEmbeddingsPipelineReady() && embeddingsPipelineInitPromise) {
-    await waitForEmbeddingsPipelineReady();
-  }
+  await waitForEmbeddingsPipelineReady();
 
   if (embeddingsPipelineInitError) {
     return buildErrorResponse(500, {
       error: "Failed to initialize embeddings model.",
       details: embeddingsPipelineInitError.message,
-    });
-  }
-
-  // If the model is still loading in the background, surface a clear
-  // "initializing" status instead of forcing callers to wait for a long
-  // cold-start on the first few requests.
-  if (!isEmbeddingsPipelineReady()) {
-    return buildErrorResponse(503, {
-      error: "Embeddings model is still loading. Please try again shortly.",
-      status: "initializing",
-      model: MODEL_ID,
-    }, {
-      headers: {
-        "Retry-After": "5",
-      },
     });
   }
 
@@ -188,6 +166,13 @@ export async function POST(request: NextRequest) {
 
     if (typeof rawOutput.tolist === "function") {
       const list = rawOutput.tolist();
+
+      if (!Array.isArray(list) || list.length === 0) {
+        return buildErrorResponse(500, {
+          error: "Embeddings model returned empty or invalid list output.",
+        });
+      }
+
       embeddings = Array.isArray(list[0]) ? (list as number[][]) : [list as number[]];
     } else if (rawOutput.data && Array.isArray(rawOutput.dims) && rawOutput.dims.length === 2) {
       const [batchSize, dimension] = rawOutput.dims;
@@ -200,8 +185,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const flat = Array.from({ length: rawOutput.data.length }, (_, index) => rawOutput.data![index]);
-
+      const flat = Array.from(rawOutput.data);
       embeddings = [];
       for (let i = 0; i < batchSize; i += 1) {
         const start = i * dimension;
@@ -214,13 +198,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (!embeddings.length || !embeddings[0]?.length) {
+    if (!Array.isArray(embeddings) || embeddings.length === 0 || !embeddings[0]?.length) {
       return buildErrorResponse(500, {
         error: "Embeddings model returned empty output.",
       });
     }
 
     const dimensions = embeddings[0].length;
+
+    if (!embeddings.every((row) => Array.isArray(row) && row.length === dimensions)) {
+      return buildErrorResponse(500, {
+        error: "Embeddings model returned rows with inconsistent dimensions.",
+      });
+    }
 
     const responseBody: EmbeddingsResponseBody = {
       model: MODEL_ID,

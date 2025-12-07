@@ -183,6 +183,31 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
     });
   });
 
+  it("returns 500 when tolist() returns an empty array", async () => {
+    vi.resetModules();
+
+    const transformers = await import("@xenova/transformers");
+    const pipelineMock = transformers.pipeline as unknown as ReturnType<
+      typeof vi.fn
+    >;
+
+    const embeddingsFn = vi.fn(async () => ({
+      tolist: () => [],
+    }));
+
+    pipelineMock.mockResolvedValueOnce(embeddingsFn);
+
+    const POST = await loadPost();
+
+    const response = await POST(createRequest({ inputs: ["foo"] }));
+    const json = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(json).toEqual({
+      error: "Embeddings model returned empty or invalid list output.",
+    });
+  });
+
   it("returns 200 with embeddings when the model outputs dims/data", async () => {
     vi.resetModules();
 
@@ -233,6 +258,36 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
     expect(embeddingsFn).toHaveBeenCalledWith(["alpha", "beta"], {
       pooling: "mean",
       normalize: true,
+    });
+  });
+
+  it("returns 500 when embeddings rows have inconsistent dimensions", async () => {
+    vi.resetModules();
+
+    const transformers = await import("@xenova/transformers");
+    const pipelineMock = transformers.pipeline as unknown as ReturnType<
+      typeof vi.fn
+    >;
+
+    const embeddingsFn = vi.fn(async () => ({
+      tolist: () => [
+        [0, 1, 2],
+        [3, 4],
+      ],
+    }));
+
+    pipelineMock.mockResolvedValueOnce(embeddingsFn);
+
+    const POST = await loadPost();
+
+    const response = await POST(
+      createRequest({ inputs: ["alpha", "beta"] }),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(json).toEqual({
+      error: "Embeddings model returned rows with inconsistent dimensions.",
     });
   });
 
