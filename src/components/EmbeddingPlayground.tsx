@@ -116,6 +116,7 @@ export function EmbeddingPlayground() {
       try {
         const response = await fetch("/api/embeddings", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
@@ -149,6 +150,7 @@ export function EmbeddingPlayground() {
       try {
         const response = await fetch("/api/reduce", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
