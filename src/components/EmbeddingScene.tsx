@@ -53,15 +53,25 @@ function computeBounds(points: EmbeddingPoint[]): Bounds {
   const centerY = (minY + maxY) / 2;
   const centerZ = (minZ + maxZ) / 2;
 
-  const extentX = maxX - minX;
-  const extentY = maxY - minY;
-  const extentZ = maxZ - minZ;
+  const center: [number, number, number] = [centerX, centerY, centerZ];
 
-  const radius = Math.max(extentX, extentY, extentZ) || 1;
+  let radius = 0;
+
+  for (const { position } of points) {
+    const dx = position[0] - center[0];
+    const dy = position[1] - center[1];
+    const dz = position[2] - center[2];
+
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (distance > radius) {
+      radius = distance;
+    }
+  }
 
   return {
-    center: [centerX, centerY, centerZ],
-    radius,
+    center,
+    radius: radius || 1,
   };
 }
 
@@ -150,7 +160,7 @@ export function EmbeddingScene({
 }: EmbeddingSceneProps) {
   const { center, radius } = useMemo(() => computeBounds(points), [points]);
 
-  const cameraDistance = radius * 2.5 || 5;
+  const cameraDistance = radius * 2.5;
 
   return (
     <div className="relative h-[360px] w-full md:h-[480px]">
