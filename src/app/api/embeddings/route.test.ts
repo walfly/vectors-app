@@ -360,4 +360,39 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
     expect(json.error).toBe("Failed to initialize embeddings model.");
     expect(json.details).toContain("Failed to load model");
   });
+
+  it("returns cached embeddings without invoking the model when available", async () => {
+    vi.resetModules();
+
+    delete process.env.KV_REST_API_URL;
+    delete process.env.VERCEL_KV_REST_API_URL;
+    delete process.env.KV_URL;
+
+    const { setCachedEmbedding } = (await import("@/lib/embeddings/cache")) as typeof import("@/lib/embeddings/cache");
+
+    await setCachedEmbedding("cached text", "Xenova/all-MiniLM-L6-v2", [
+      10,
+      20,
+      30,
+    ]);
+
+    const POST = await loadPost();
+
+    const response = await POST(createRequest({ inputs: ["cached text"] }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.model).toBe("Xenova/all-MiniLM-L6-v2");
+    expect(json.embeddings).toEqual([[10, 20, 30]]);
+    expect(json.dimensions).toBe(3);
+
+    const transformers = await import("@xenova/transformers");
+    const pipelineMock = transformers.pipeline as unknown as ReturnType<
+      typeof vi.fn
+    >;
+
+    // When the cache can satisfy the request fully, we should not invoke
+    // the underlying embeddings model at all.
+    expect(pipelineMock).not.toHaveBeenCalled();
+  });
 });

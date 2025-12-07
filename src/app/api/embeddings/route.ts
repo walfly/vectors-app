@@ -7,6 +7,7 @@ import {
   getEmbeddingsPipelineError,
   isEmbeddingsPipelineReady,
 } from "@/lib/embeddings/pipeline";
+import { getCachedEmbedding, setCachedEmbedding } from "@/lib/embeddings/cache";
 import { buildErrorResponse } from "@/lib/utils/responses";
 
 export const runtime = "nodejs";
@@ -88,6 +89,55 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse(400, parsedInputs);
   }
 
+  const inputs = parsedInputs;
+
+  // Check the embeddings cache first so that repeated requests for the same
+  // text can avoid re-running the embeddings model when Vercel KV (or the
+  // in-memory fallback) already has a stored value.
+  const cachedEmbeddings = await Promise.all(
+    inputs.map((text) => getCachedEmbedding(text, MODEL_ID)),
+  );
+
+  const missingIndices: number[] = [];
+  const inputsToCompute: string[] = [];
+
+  cachedEmbeddings.forEach((embedding, index) => {
+    if (!embedding) {
+      missingIndices.push(index);
+      inputsToCompute.push(inputs[index]);
+    }
+  });
+
+  if (missingIndices.length === 0) {
+    const first = cachedEmbeddings[0];
+
+    if (!first || !Array.isArray(first) || first.length === 0) {
+      return buildErrorResponse(500, {
+        error: "Embeddings cache returned empty output.",
+      });
+    }
+
+    const dimensionsFromCache = first.length;
+
+    if (
+      !cachedEmbeddings.every(
+        (row) => Array.isArray(row) && row.length === dimensionsFromCache,
+      )
+    ) {
+      return buildErrorResponse(500, {
+        error: "Embeddings cache returned rows with inconsistent dimensions.",
+      });
+    }
+
+    const responseBody: EmbeddingsResponseBody = {
+      model: MODEL_ID,
+      embeddings: cachedEmbeddings as number[][],
+      dimensions: dimensionsFromCache,
+    };
+
+    return NextResponse.json(responseBody, { status: 200 });
+  }
+
   // Ensure the embeddings model is initializing in the background.
   ensureEmbeddingsPipelineInitializing();
 
@@ -124,7 +174,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Embeddings pipeline missing despite ready status");
     }
 
-    const rawOutput = (await readyEmbeddingsPipeline(parsedInputs, {
+    const rawOutput = (await readyEmbeddingsPipeline(inputsToCompute, {
       pooling: "mean",
       normalize: true,
     })) as {
@@ -178,9 +228,62 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const dimensions = embeddings[0].length;
+    if (embeddings.length !== inputsToCompute.length) {
+      return buildErrorResponse(500, {
+        error:
+          "Embeddings model returned a different number of rows than requested.",
+        details: `expected ${inputsToCompute.length}, got ${embeddings.length}`,
+      });
+    }
 
-    if (!embeddings.every((row) => Array.isArray(row) && row.length === dimensions)) {
+    // Persist newly computed embeddings back to the cache on a
+    // best-effort basis. Failures are logged inside the cache helper
+    // and do not affect the response.
+    await Promise.all(
+      inputsToCompute.map((text, index) =>
+        setCachedEmbedding(text, MODEL_ID, embeddings[index]!),
+      ),
+    );
+
+    const combinedEmbeddings: number[][] = [];
+    let computedIndex = 0;
+
+    for (let index = 0; index < inputs.length; index += 1) {
+      const cached = cachedEmbeddings[index];
+
+      if (cached) {
+        combinedEmbeddings.push(cached);
+      } else {
+        const computed = embeddings[computedIndex];
+
+        if (!computed) {
+          return buildErrorResponse(500, {
+            error: "Embeddings model returned empty output.",
+          });
+        }
+
+        combinedEmbeddings.push(computed);
+        computedIndex += 1;
+      }
+    }
+
+    if (
+      !Array.isArray(combinedEmbeddings) ||
+      combinedEmbeddings.length === 0 ||
+      !combinedEmbeddings[0]?.length
+    ) {
+      return buildErrorResponse(500, {
+        error: "Embeddings model returned empty output.",
+      });
+    }
+
+    const dimensions = combinedEmbeddings[0].length;
+
+    if (
+      !combinedEmbeddings.every(
+        (row) => Array.isArray(row) && row.length === dimensions,
+      )
+    ) {
       return buildErrorResponse(500, {
         error: "Embeddings model returned rows with inconsistent dimensions.",
       });
@@ -188,7 +291,7 @@ export async function POST(request: NextRequest) {
 
     const responseBody: EmbeddingsResponseBody = {
       model: MODEL_ID,
-      embeddings,
+      embeddings: combinedEmbeddings,
       dimensions,
     };
 

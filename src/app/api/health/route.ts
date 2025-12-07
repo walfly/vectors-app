@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getKvAvailable } from "@/lib/embeddings/cache";
 import { getEmbeddingsModelStatus, MODEL_ID } from "../../../lib/embeddings/pipeline";
 
 export const runtime = "nodejs";
@@ -13,14 +14,6 @@ type HealthResponseBody = {
   modelName: string;
   kvAvailable: boolean;
 };
-
-function getKvAvailable(): boolean {
-  return Boolean(
-    process.env.KV_REST_API_URL ||
-      process.env.VERCEL_KV_REST_API_URL ||
-      process.env.KV_URL,
-  );
-}
 
 export async function GET() {
   const { modelLoaded, initializing, error } = getEmbeddingsModelStatus();
