@@ -190,7 +190,7 @@ export function EmbeddingScene({
         <OrbitControls enableDamping enablePan enableZoom />
       </Canvas>
       {!points.length && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center">
           {resolvedEmptyState}
         </div>
       )}
