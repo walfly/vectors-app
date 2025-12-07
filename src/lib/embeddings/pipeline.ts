@@ -19,11 +19,7 @@ const state: EmbeddingsPipelineState = {
   initError: null,
 };
 
-export function ensureEmbeddingsPipelineInitializing() {
-  if (state.pipeline || state.initPromise || state.initError) {
-    return;
-  }
-
+function startEmbeddingsPipelineInitialization() {
   const initPromise = pipeline("feature-extraction", MODEL_ID)
     .then((fn) => {
       state.pipeline = fn as EmbeddingsPipeline;
@@ -37,6 +33,41 @@ export function ensureEmbeddingsPipelineInitializing() {
     });
 
   state.initPromise = initPromise;
+}
+
+function resetEmbeddingsPipelineState() {
+  state.pipeline = null;
+  state.initPromise = null;
+  state.initError = null;
+}
+
+export function ensureEmbeddingsPipelineInitializing() {
+  if (state.pipeline || state.initPromise || state.initError) {
+    return;
+  }
+
+  startEmbeddingsPipelineInitialization();
+}
+
+/**
+* Force a fresh initialization attempt for the embeddings pipeline.
+*
+* This clears any existing pipeline instance, in-flight initialization
+* promise, and previous initialization error before starting a new
+* initialization.
+*/
+export function restartEmbeddingsPipeline() {
+  resetEmbeddingsPipelineState();
+  startEmbeddingsPipelineInitialization();
+}
+
+/**
+* Test-only helper to clear the embeddings pipeline singleton state.
+*
+* Not intended for use in production code.
+*/
+export function __resetEmbeddingsPipelineStateForTests() {
+  resetEmbeddingsPipelineState();
 }
 
 export function isEmbeddingsPipelineReady(): boolean {
