@@ -1,6 +1,8 @@
 import { env } from '@huggingface/transformers';
 // use wasm on edge instead of node
-env.backends.onnx.wasm.numThreads = 1;
+if (env?.backends?.onnx?.wasm) {
+  env.backends.onnx.wasm.numThreads = 1;
+}
 
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
