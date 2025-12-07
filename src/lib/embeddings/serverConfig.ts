@@ -1,7 +1,5 @@
-const EMBEDDINGS_SERVER_URL_ENV = "EMBEDDINGS_SERVER_URL" as const;
-
 export function getEmbeddingsServerBaseUrl(): string | null {
-  const raw = process.env[EMBEDDINGS_SERVER_URL_ENV];
+  const raw = process.env.EMBEDDINGS_SERVER_URL;
 
   if (!raw) {
     return null;
@@ -25,5 +23,5 @@ export function getEmbeddingsServerUrl(pathname: string): string | null {
 }
 
 export function getEmbeddingsServerEnvVarName(): string {
-  return EMBEDDINGS_SERVER_URL_ENV;
+  return "EMBEDDINGS_SERVER_URL";
 }
