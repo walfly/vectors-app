@@ -8,7 +8,7 @@ import {
   isEmbeddingsPipelineReady,
 } from "../../../lib/embeddings/pipeline";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 type WarmResponseBody = {
   warmed: boolean;

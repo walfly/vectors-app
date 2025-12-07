@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { reduceWithPCA, reduceWithUMAP } from "@/lib/vectors";
 import { buildErrorResponse } from "@/lib/utils/responses";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 type ReductionMethod = "pca" | "umap";
 

@@ -9,7 +9,7 @@ import {
 } from "@/lib/embeddings/pipeline";
 import { buildErrorResponse } from "@/lib/utils/responses";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 const MAX_INPUTS = 64;
 const MAX_INPUT_LENGTH = 1024; // characters
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getEmbeddingsModelStatus, MODEL_ID } from "../../../lib/embeddings/pipeline";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 type HealthStatus = "ok" | "degraded" | "error";
 
