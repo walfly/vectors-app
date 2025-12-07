@@ -145,8 +145,8 @@ export function EmbeddingScene({
   points,
   pointSize = 0.06,
   backgroundColor = "#020617",
-  defaultPointColor = "#4f46e5",
-  highlightColor = "#f97316",
+  defaultPointColor = "#e5e7eb",
+  highlightColor = "#facc15",
 }: EmbeddingSceneProps) {
   const { center, radius } = useMemo(() => computeBounds(points), [points]);
 
