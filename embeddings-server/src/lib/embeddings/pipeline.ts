@@ -1,4 +1,4 @@
-import { pipeline } from "@xenova/transformers";
+import { pipeline } from '@huggingface/transformers';
 
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
@@ -32,7 +32,10 @@ function startEmbeddingsPipelineInitialization() {
 
       // Log initialization failures at the source so they are visible
       // even if callers only inspect aggregated status.
-      console.error("Embeddings pipeline initialization failed", normalizedError);
+      console.error(
+        "Embeddings pipeline initialization failed",
+        normalizedError,
+      );
     })
     .finally(() => {
       state.initPromise = null;

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: embeddings-server
+    env: docker
+    rootDir: embeddings-server
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: redis
+          property: connectionString
+
+  - type: redis
+    name: redis
+    plan: free # or starter, depending on needs
+    maxmemoryPolicy: noeviction
+    ipAllowList: [] # Allow internal connections only
+

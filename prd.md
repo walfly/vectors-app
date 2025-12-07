@@ -179,7 +179,7 @@ All machine learning runs in JavaScript/TypeScript—no Python required.
 
 | Capability | Library | Notes |
 |------------|---------|-------|
-| **Embedding Generation** | `@xenova/transformers` | Hugging Face Transformers.js, runs in Node.js API routes |
+| **Embedding Generation** | `@huggingface/transformers` | Hugging Face Transformers.js, runs in Node.js API routes |
 | **Fallback Embeddings** | OpenAI/Cohere API | Optional, for higher quality when needed |
 | **Dimensionality Reduction** | `umap-js`, `ml-pca` | Pure JS implementations of UMAP and PCA |
 | **Vector Math** | Custom utilities | Cosine similarity, Euclidean distance, arithmetic |
@@ -210,7 +210,7 @@ All machine learning runs in JavaScript/TypeScript—no Python required.
     "@react-three/fiber": "^8.15.0",
     "@react-three/drei": "^9.88.0",
     "three": "^0.158.0",
-    "@xenova/transformers": "^2.17.0",
+    "@huggingface/transformers": "^3.3.2",
     "umap-js": "^1.4.0",
     "ml-pca": "^4.1.1",
     "zustand": "^4.4.0",

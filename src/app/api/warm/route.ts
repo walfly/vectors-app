@@ -1,86 +1,54 @@
 import { NextResponse } from "next/server";
 
 import {
-  MODEL_ID,
-  ensureEmbeddingsPipelineInitializing,
-  getEmbeddingsPipelineError,
-  getEmbeddingsPipelineInitPromise,
-  isEmbeddingsPipelineReady,
-} from "../../../lib/embeddings/pipeline";
+  getEmbeddingsServerEnvVarName,
+  getEmbeddingsServerUrl,
+} from "../../../lib/embeddings/serverConfig";
+import { buildErrorResponse } from "../../../lib/utils/responses";
 
-export const runtime = "nodejs";
-
-type WarmResponseBody = {
-  warmed: boolean;
-  modelName: string;
-  status: "initializing" | "ready" | "error";
-  error?: string;
-};
+export const runtime = "edge";
 
 export async function GET() {
-  ensureEmbeddingsPipelineInitializing();
+  const targetUrl = getEmbeddingsServerUrl("/api/warm");
 
-  const existingError = getEmbeddingsPipelineError();
-
-  if (existingError) {
-    const body: WarmResponseBody = {
-      warmed: false,
-      modelName: MODEL_ID,
-      status: "error",
-      error: existingError.message,
-    };
-
-    return NextResponse.json(body, { status: 500 });
+  if (!targetUrl) {
+    return buildErrorResponse(500, {
+      error: `Embeddings server URL is not configured. Set ${getEmbeddingsServerEnvVarName()} in the environment.`,
+    });
   }
 
-  const initPromise = getEmbeddingsPipelineInitPromise();
+  let upstream: Response;
 
-  if (!isEmbeddingsPipelineReady() && initPromise) {
+  try {
+    upstream = await fetch(targetUrl, { method: "GET" });
+  } catch (error) {
+    return buildErrorResponse(502, {
+      error: "Failed to reach embeddings server.",
+      details: error instanceof Error ? error.message : undefined,
+    });
+  }
+
+  const contentType = upstream.headers.get("content-type") ?? "";
+
+  let json: unknown;
+
+  if (contentType.includes("application/json")) {
     try {
-      await initPromise;
+      json = await upstream.json();
     } catch (error) {
-      // Surface unexpected initialization rejections to logs so that
-      // warm-up failures are debuggable even if the shared pipeline
-      // module does not record an initError for some reason.
-      //
-      // Next.js logs server-side console output, which is appropriate
-      // for this low-frequency warm-up endpoint.
-      console.error("Embeddings warm-up initialization rejected", error);
-
-      const recordedError = getEmbeddingsPipelineError();
-
-      const body: WarmResponseBody = {
-        warmed: false,
-        modelName: MODEL_ID,
-        status: "error",
-        error:
-          recordedError?.message ??
-          "Embeddings initialization failed; see server logs for details.",
-      };
-
-      return NextResponse.json(body, { status: 500 });
+      return buildErrorResponse(502, {
+        error: "Embeddings server returned invalid JSON.",
+        details: error instanceof Error ? error.message : undefined,
+      });
     }
+  } else {
+    const text = await upstream.text();
+
+    return buildErrorResponse(502, {
+      error: "Embeddings server returned a non-JSON response.",
+      details: text.slice(0, 256),
+    });
   }
 
-  const error = getEmbeddingsPipelineError();
-  const warmed = isEmbeddingsPipelineReady();
-
-  if (error) {
-    const body: WarmResponseBody = {
-      warmed: false,
-      modelName: MODEL_ID,
-      status: "error",
-      error: error.message,
-    };
-
-    return NextResponse.json(body, { status: 500 });
-  }
-
-  const body: WarmResponseBody = {
-    warmed,
-    modelName: MODEL_ID,
-    status: warmed ? "ready" : "initializing",
-  };
-
-  return NextResponse.json(body, { status: 200 });
+  return NextResponse.json(json, { status: upstream.status });
 }
