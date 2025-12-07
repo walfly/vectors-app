@@ -38,9 +38,27 @@ export async function GET() {
   if (!isEmbeddingsPipelineReady() && initPromise) {
     try {
       await initPromise;
-    } catch {
-      // Swallow any unexpected rejections; the shared pipeline module
-      // records initialization failures via getEmbeddingsPipelineError().
+    } catch (error) {
+      // Surface unexpected initialization rejections to logs so that
+      // warm-up failures are debuggable even if the shared pipeline
+      // module does not record an initError for some reason.
+      //
+      // Next.js logs server-side console output, which is appropriate
+      // for this low-frequency warm-up endpoint.
+      console.error("Embeddings warm-up initialization rejected", error);
+
+      const recordedError = getEmbeddingsPipelineError();
+
+      const body: WarmResponseBody = {
+        warmed: false,
+        modelName: MODEL_ID,
+        status: "error",
+        error:
+          recordedError?.message ??
+          "Embeddings initialization failed; see server logs for details.",
+      };
+
+      return NextResponse.json(body, { status: 500 });
     }
   }
 
