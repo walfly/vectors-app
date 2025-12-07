@@ -126,9 +126,9 @@ export async function POST(request: NextRequest) {
     const readyEmbeddingsPipeline = getEmbeddingsPipeline();
 
     if (!readyEmbeddingsPipeline) {
-      return buildErrorResponse(500, {
-        error: "Embeddings model is not ready.",
-      });
+      // This should be impossible if isEmbeddingsPipelineReady() returned true.
+      // Rely on this invariant and fail loudly in case of divergence.
+      throw new Error("Embeddings pipeline missing despite ready status");
     }
 
     const rawOutput = (await readyEmbeddingsPipeline(parsedInputs, {
