@@ -40,7 +40,8 @@
     "onlyBuiltDependencies": [
       "protobufjs",
       "sharp",
-      "unrs-resolver"
+      "unrs-resolver",
+      "onnxruntime-node"
     ]
   }
 }
