@@ -25,8 +25,14 @@ function startEmbeddingsPipelineInitialization() {
       state.pipeline = fn as EmbeddingsPipeline;
     })
     .catch((error) => {
-      state.initError =
+      const normalizedError =
         error instanceof Error ? error : new Error(String(error));
+
+      state.initError = normalizedError;
+
+      // Log initialization failures at the source so they are visible
+      // even if callers only inspect aggregated status.
+      console.error("Embeddings pipeline initialization failed", normalizedError);
     })
     .finally(() => {
       state.initPromise = null;
