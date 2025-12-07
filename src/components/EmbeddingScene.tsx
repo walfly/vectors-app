@@ -20,6 +20,10 @@ export type EmbeddingSceneProps = {
   emptyState?: ReactNode;
 };
 
+const defaultEmptyState = (
+  <p className="text-xs text-zinc-400">No points to display yet.</p>
+);
+
 type Bounds = {
   center: [number, number, number];
   radius: number;
@@ -161,36 +165,35 @@ export function EmbeddingScene({
 
   const cameraDistance = radius * 2.5;
 
-  const resolvedEmptyState =
-    emptyState ?? (
-      <div className="rounded-md border border-dashed border-zinc-700/80 bg-zinc-900/80 px-3 py-2 text-xs text-zinc-400 backdrop-blur">
-        No points to display yet.
-      </div>
-    );
+  const resolvedEmptyState = emptyState ?? defaultEmptyState;
+
+  const hasPoints = points.length > 0;
 
   return (
     <div className="relative h-[360px] w-full md:h-[480px]">
-      <Canvas
-        className="h-full w-full"
-        camera={{
-          position: [0, 0, cameraDistance],
-          fov: 50,
-        }}
-        dpr={[1, 2]}
-      >
-        <color attach="background" args={[backgroundColor]} />
-        <group position={[-center[0], -center[1], -center[2]]}>
-          <EmbeddingSceneInner
-            points={points}
-            pointSize={pointSize}
-            defaultPointColor={defaultPointColor}
-            highlightColor={highlightColor}
-          />
-        </group>
-        <OrbitControls enableDamping enablePan enableZoom />
-      </Canvas>
-      {!points.length && (
-        <div className="absolute inset-0 flex items-center justify-center">
+      {hasPoints && (
+        <Canvas
+          className="h-full w-full"
+          camera={{
+            position: [0, 0, cameraDistance],
+            fov: 50,
+          }}
+          dpr={[1, 2]}
+        >
+          <color attach="background" args={[backgroundColor]} />
+          <group position={[-center[0], -center[1], -center[2]]}>
+            <EmbeddingSceneInner
+              points={points}
+              pointSize={pointSize}
+              defaultPointColor={defaultPointColor}
+              highlightColor={highlightColor}
+            />
+          </group>
+          <OrbitControls enableDamping enablePan enableZoom />
+        </Canvas>
+      )}
+      {!hasPoints && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
           {resolvedEmptyState}
         </div>
       )}
