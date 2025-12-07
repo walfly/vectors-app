@@ -1,8 +1,4 @@
-import { env } from '@huggingface/transformers';
-// use wasm on edge instead of node
-if (env?.backends?.onnx?.wasm) {
-  env.backends.onnx.wasm.numThreads = 1;
-}
+import { pipeline } from '@huggingface/transformers';
 
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
@@ -24,8 +20,7 @@ const state: EmbeddingsPipelineState = {
 };
 
 function startEmbeddingsPipelineInitialization() {
-  const initPromise = import("@huggingface/transformers")
-    .then((mod) => mod.pipeline("feature-extraction", MODEL_ID))
+  const initPromise = pipeline("feature-extraction", MODEL_ID)
     .then((fn) => {
       state.pipeline = fn as EmbeddingsPipeline;
     })
