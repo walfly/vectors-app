@@ -7,6 +7,7 @@ import {
   getEmbeddingsPipelineError,
   isEmbeddingsPipelineReady,
 } from "../../../lib/embeddings/pipeline";
+import { buildErrorResponse } from "../../../lib/utils/responses";
 
 export const runtime = "nodejs";
 const MAX_INPUTS = 64;
@@ -67,14 +68,6 @@ function parseInputs(body: unknown): string[] | ErrorResponseBody {
   }
 
   return nonEmptyInputs;
-}
-
-function buildErrorResponse(
-  status: number,
-  body: ErrorResponseBody,
-  init?: Omit<ResponseInit, "status">,
-) {
-  return NextResponse.json(body, { status, ...init });
 }
 
 export async function POST(request: NextRequest) {

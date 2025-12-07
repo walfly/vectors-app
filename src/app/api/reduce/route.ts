@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { reduceWithPCA, reduceWithUMAP } from "../../../lib/vectors";
+import { buildErrorResponse } from "../../../lib/utils/responses";
 
 export const runtime = "nodejs";
 
@@ -135,10 +136,6 @@ function parseReductionRequest(body: unknown):
     method: methodValue,
     dimensions: dimensionsValue,
   };
-}
-
-function buildErrorResponse(status: number, body: ErrorResponseBody) {
-  return NextResponse.json(body, { status });
 }
 
 export async function POST(request: NextRequest) {
