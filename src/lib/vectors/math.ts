@@ -16,7 +16,7 @@ function assertVector(vector: Vector, fnName: string, paramName: string) {
   for (let i = 0; i < vector.length; i += 1) {
     const value = vector[i];
 
-    if (typeof value !== "number" || Number.isNaN(value)) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new TypeError(
         `${fnName}: '${paramName}[${i}]' must be a finite number. Received ${String(
           value,

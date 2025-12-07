@@ -47,7 +47,7 @@ function assertVectorsMatrix(
     for (let j = 0; j < row.length; j += 1) {
       const value = row[j];
 
-      if (typeof value !== "number" || Number.isNaN(value)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
         throw new TypeError(
           `${fnName}: 'vectors[${i}][${j}]' must be a finite number. Received ${String(
             value,
