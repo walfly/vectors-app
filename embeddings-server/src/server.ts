@@ -1,5 +1,11 @@
-import { Buffer } from "node:buffer";
-import http from "node:http";
+import { createHash } from "node:crypto";
+
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
+import { createClient } from "redis";
 
 import {
   MODEL_ID,
@@ -13,6 +19,8 @@ import {
 
 const MAX_INPUTS = 64;
 const MAX_INPUT_LENGTH = 1024; // characters
+const REDIS_URL_ENV = "REDIS_URL" as const;
+const DEFAULT_CACHE_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 type EmbeddingsResponseBody = {
   model: string;
@@ -42,6 +50,141 @@ type HealthResponseBody = {
   initializing: boolean;
   modelName: string;
 };
+
+type EmbeddingsCacheEntry = EmbeddingsResponseBody;
+
+type RedisClient = ReturnType<typeof createClient>;
+
+let redisClient: RedisClient | null = null;
+let redisInitPromise: Promise<RedisClient | null> | null = null;
+
+function getRedisUrl(): string | null {
+  const raw = process.env[REDIS_URL_ENV];
+
+  if (!raw) {
+    return null;
+  }
+
+  return raw;
+}
+
+function getEmbeddingsCacheTtlSeconds(): number | null {
+  const raw = process.env.EMBEDDINGS_CACHE_TTL_SECONDS;
+
+  if (!raw) {
+    return DEFAULT_CACHE_TTL_SECONDS;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
+async function getRedisClient(): Promise<RedisClient | null> {
+  const url = getRedisUrl();
+
+  if (!url) {
+    return null;
+  }
+
+  if (redisClient) {
+    return redisClient;
+  }
+
+  if (!redisInitPromise) {
+    redisInitPromise = (async () => {
+      const client = createClient({ url });
+
+      client.on("error", (error) => {
+        console.error("Redis client error", error);
+      });
+
+      await client.connect();
+
+      redisClient = client;
+      return client;
+    })().catch((error) => {
+      console.error("Failed to initialize Redis client", error);
+      redisInitPromise = null;
+      return null;
+    });
+  }
+
+  return redisInitPromise;
+}
+
+function buildEmbeddingsCacheKey(inputs: string[]): string {
+  const hash = createHash("sha256");
+  hash.update(JSON.stringify({ model: MODEL_ID, inputs }));
+  return `embeddings:${MODEL_ID}:${hash.digest("hex")}`;
+}
+
+async function getCachedEmbeddings(
+  inputs: string[],
+): Promise<EmbeddingsCacheEntry | null> {
+  const client = await getRedisClient();
+
+  if (!client) {
+    return null;
+  }
+
+  const key = buildEmbeddingsCacheKey(inputs);
+
+  try {
+    const value = await client.get(key);
+
+    if (!value) {
+      return null;
+    }
+
+    const parsed = JSON.parse(value) as EmbeddingsCacheEntry;
+
+    if (
+      !parsed ||
+      parsed.model !== MODEL_ID ||
+      !Array.isArray(parsed.embeddings) ||
+      parsed.embeddings.length === 0 ||
+      typeof parsed.dimensions !== "number"
+    ) {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error("Failed to read embeddings from Redis cache", error);
+    return null;
+  }
+}
+
+async function setCachedEmbeddings(
+  inputs: string[],
+  body: EmbeddingsCacheEntry,
+): Promise<void> {
+  const client = await getRedisClient();
+
+  if (!client) {
+    return;
+  }
+
+  const ttlSeconds = getEmbeddingsCacheTtlSeconds();
+  const key = buildEmbeddingsCacheKey(inputs);
+
+  try {
+    const payload = JSON.stringify(body);
+
+    if (ttlSeconds && ttlSeconds > 0) {
+      await client.set(key, payload, { EX: ttlSeconds });
+    } else {
+      await client.set(key, payload);
+    }
+  } catch (error) {
+    console.error("Failed to write embeddings to Redis cache", error);
+  }
+}
 
 function parseInputs(body: unknown): string[] | ErrorResponseBody {
   if (body === null || typeof body !== "object") {
@@ -99,72 +242,29 @@ function parseInputs(body: unknown): string[] | ErrorResponseBody {
   return nonEmptyInputs;
 }
 
-function readRequestBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-
-    req.on("data", (chunk) => {
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-    });
-
-    req.on("end", () => {
-      resolve(Buffer.concat(chunks).toString("utf8"));
-    });
-
-    req.on("error", (error) => {
-      reject(error);
-    });
-  });
-}
-
 function sendJson(
-  res: http.ServerResponse<http.IncomingMessage>,
+  res: Response,
   status: number,
   body: unknown,
-  extraHeaders?: http.OutgoingHttpHeaders,
+  extraHeaders?: Record<string, string>,
 ) {
-  const json = JSON.stringify(body);
-
-  res.statusCode = status;
+  res.status(status);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("X-Content-Type-Options", "nosniff");
 
   if (extraHeaders) {
     for (const [key, value] of Object.entries(extraHeaders)) {
       if (typeof value !== "undefined") {
-        res.setHeader(key, value as string);
+        res.setHeader(key, value);
       }
     }
   }
 
-  res.setHeader("Content-Length", Buffer.byteLength(json));
-  res.end(json);
+  res.json(body);
 }
 
-async function handleEmbeddings(
-  req: http.IncomingMessage,
-  res: http.ServerResponse<http.IncomingMessage>,
-) {
-  if (req.method !== "POST") {
-    res.statusCode = 405;
-    res.setHeader("Allow", "POST");
-    res.end("Method Not Allowed");
-    return;
-  }
-
-  let json: unknown;
-
-  try {
-    const text = await readRequestBody(req);
-    json = text.length ? JSON.parse(text) : null;
-  } catch (error) {
-    sendJson(res, 400, {
-      error: "Invalid JSON body.",
-      details: error instanceof Error ? error.message : String(error),
-    } satisfies ErrorResponseBody);
-    return;
-  }
-
-  const parsedInputs = parseInputs(json);
+async function handleEmbeddings(req: Request, res: Response) {
+  const parsedInputs = parseInputs(req.body);
 
   if (!Array.isArray(parsedInputs)) {
     sendJson(res, 400, parsedInputs);
@@ -196,6 +296,13 @@ async function handleEmbeddings(
         "Retry-After": "5",
       },
     );
+    return;
+  }
+
+  const cached = await getCachedEmbeddings(parsedInputs);
+
+  if (cached) {
+    sendJson(res, 200, cached);
     return;
   }
 
@@ -263,7 +370,11 @@ async function handleEmbeddings(
       return;
     }
 
-    if (!Array.isArray(embeddings) || embeddings.length === 0 || !embeddings[0]?.length) {
+    if (
+      !Array.isArray(embeddings) ||
+      embeddings.length === 0 ||
+      !embeddings[0]?.length
+    ) {
       sendJson(res, 500, {
         error: "Embeddings model returned empty output.",
       } satisfies ErrorResponseBody);
@@ -272,7 +383,11 @@ async function handleEmbeddings(
 
     const dimensions = embeddings[0].length;
 
-    if (!embeddings.every((row) => Array.isArray(row) && row.length === dimensions)) {
+    if (
+      !embeddings.every(
+        (row) => Array.isArray(row) && row.length === dimensions,
+      )
+    ) {
       sendJson(res, 500, {
         error: "Embeddings model returned rows with inconsistent dimensions.",
       } satisfies ErrorResponseBody);
@@ -285,6 +400,8 @@ async function handleEmbeddings(
       dimensions,
     };
 
+    await setCachedEmbeddings(parsedInputs, responseBody);
+
     sendJson(res, 200, responseBody);
   } catch (error) {
     sendJson(res, 500, {
@@ -294,17 +411,7 @@ async function handleEmbeddings(
   }
 }
 
-async function handleWarm(
-  req: http.IncomingMessage,
-  res: http.ServerResponse<http.IncomingMessage>,
-) {
-  if (req.method !== "GET") {
-    res.statusCode = 405;
-    res.setHeader("Allow", "GET");
-    res.end("Method Not Allowed");
-    return;
-  }
-
+async function handleWarm(_req: Request, res: Response) {
   ensureEmbeddingsPipelineInitializing();
 
   const existingError = getEmbeddingsPipelineError();
@@ -369,10 +476,7 @@ async function handleWarm(
   sendJson(res, 200, body);
 }
 
-function handleHealth(
-  _req: http.IncomingMessage,
-  res: http.ServerResponse<http.IncomingMessage>,
-) {
+function handleHealth(_req: Request, res: Response) {
   const { modelLoaded, initializing, error } = getEmbeddingsModelStatus();
 
   let status: HealthStatus;
@@ -395,31 +499,83 @@ function handleHealth(
   sendJson(res, 200, body);
 }
 
-const port = Number(process.env.PORT ?? "4000");
+const app = express();
 
-const server = http.createServer((req, res) => {
-  const url = req.url ?? "/";
+app.use(
+  express.json({
+    limit: "256kb",
+  }),
+);
 
-  if (url === "/api/embeddings") {
-    void handleEmbeddings(req, res);
-    return;
-  }
+app.use(
+  (
+    error: unknown,
+    _req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    if (error instanceof SyntaxError) {
+      sendJson(res, 400, {
+        error: "Invalid JSON body.",
+        details: (error as Error).message,
+      } satisfies ErrorResponseBody);
+      return;
+    }
 
-  if (url === "/api/warm") {
-    void handleWarm(req, res);
-    return;
-  }
+    next(error);
+  },
+);
 
-  if (url === "/api/health") {
-    handleHealth(req, res);
-    return;
-  }
-
-  res.statusCode = 404;
-  res.end("Not Found");
+app.post("/api/embeddings", (req, res) => {
+  void handleEmbeddings(req, res);
 });
 
-server.listen(port, () => {
+app.all("/api/embeddings", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send("Method Not Allowed");
+});
+
+app.get("/api/warm", (req, res) => {
+  void handleWarm(req, res);
+});
+
+app.all("/api/warm", (_req, res) => {
+  res.setHeader("Allow", "GET");
+  res.status(405).send("Method Not Allowed");
+});
+
+app.get("/api/health", (req, res) => {
+  handleHealth(req, res);
+});
+
+app.all("/api/health", (_req, res) => {
+  res.setHeader("Allow", "GET");
+  res.status(405).send("Method Not Allowed");
+});
+
+app.use((req, res) => {
+  res.status(404).send("Not Found");
+});
+
+app.use(
+  (
+    error: unknown,
+    _req: Request,
+    res: Response,
+    _next: NextFunction,
+  ) => {
+    console.error("Unhandled error in embeddings server", error);
+
+    sendJson(res, 500, {
+      error: "Internal server error.",
+      details: error instanceof Error ? error.message : String(error),
+    } satisfies ErrorResponseBody);
+  },
+);
+
+const port = Number(process.env.PORT ?? "4000");
+
+app.listen(port, () => {
   console.log(
     `Embeddings server listening on http://localhost:${port} (model: ${MODEL_ID})`,
   );

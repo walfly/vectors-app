@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Ignore the standalone embeddings Express server; it has its own tooling.
+    "embeddings-server/**",
   ]),
 ]);
 
