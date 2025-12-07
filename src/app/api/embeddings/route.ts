@@ -56,16 +56,6 @@ function isEmbeddingsPipelineReady() {
   return embeddingsPipeline !== null;
 }
 
-async function waitForEmbeddingsPipelineReady() {
-  const currentInitPromise = embeddingsPipelineInitPromise;
-
-  if (isEmbeddingsPipelineReady() || !currentInitPromise) {
-    return;
-  }
-
-  await currentInitPromise;
-}
-
 function parseInputs(body: unknown): string[] | ErrorResponseBody {
   if (body === null || typeof body !== "object") {
     return {
@@ -136,14 +126,28 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse(400, parsedInputs);
   }
 
-  // Ensure the embeddings model is initialized before running the pipeline.
+  // Ensure the embeddings model is initializing in the background.
   ensureEmbeddingsPipelineInitializing();
-  await waitForEmbeddingsPipelineReady();
 
   if (embeddingsPipelineInitError) {
     return buildErrorResponse(500, {
       error: "Failed to initialize embeddings model.",
       details: embeddingsPipelineInitError.message,
+    });
+  }
+
+  // If the model is still loading in the background, surface a clear
+  // "initializing" status instead of forcing callers to wait for a long
+  // cold-start on the first few requests.
+  if (!isEmbeddingsPipelineReady()) {
+    return buildErrorResponse(503, {
+      error: "Embeddings model is still loading. Please try again shortly.",
+      status: "initializing",
+      model: MODEL_ID,
+    }, {
+      headers: {
+        "Retry-After": "5",
+      },
     });
   }
 

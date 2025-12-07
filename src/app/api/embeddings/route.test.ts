@@ -165,6 +165,22 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
 
     const POST = await loadPost();
 
+    // First request should surface a cold-start 503 while the model initializes.
+    const initializingResponse = await POST(
+      createRequest({ inputs: ["foo", "bar"] }),
+    );
+    const initializingJson = await initializingResponse.json();
+
+    expect(initializingResponse.status).toBe(503);
+    expect(initializingJson).toEqual({
+      error: "Embeddings model is still loading. Please try again shortly.",
+      status: "initializing",
+      model: "Xenova/all-MiniLM-L6-v2",
+    });
+
+    // Once the pipeline promise resolves, subsequent requests should succeed.
+    await Promise.resolve();
+
     const response = await POST(
       createRequest({ inputs: ["foo", "bar"] }),
     );
@@ -199,6 +215,13 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
 
     const POST = await loadPost();
 
+    // First request returns a cold-start 503.
+    const initializingResponse = await POST(createRequest({ inputs: ["foo"] }));
+    expect(initializingResponse.status).toBe(503);
+
+    await Promise.resolve();
+
+    // Once initialized, an empty list result is treated as a model error.
     const response = await POST(createRequest({ inputs: ["foo"] }));
     const json = await response.json();
 
@@ -243,6 +266,17 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
 
     const POST = await loadPost();
 
+    // First request should return 503 while the model initializes.
+    const initializingResponse = await POST(
+      createRequest({ inputs: ["alpha", "beta"] }),
+    );
+    const initializingJson = await initializingResponse.json();
+
+    expect(initializingResponse.status).toBe(503);
+    expect(initializingJson.status).toBe("initializing");
+
+    await Promise.resolve();
+
     const response = await POST(
       createRequest({ inputs: ["alpha", "beta"] }),
     );
@@ -280,6 +314,15 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
 
     const POST = await loadPost();
 
+    // First request returns a cold-start 503.
+    const initializingResponse = await POST(
+      createRequest({ inputs: ["alpha", "beta"] }),
+    );
+    expect(initializingResponse.status).toBe(503);
+
+    await Promise.resolve();
+
+    // Once initialized, inconsistent row dimensions are treated as an error.
     const response = await POST(
       createRequest({ inputs: ["alpha", "beta"] }),
     );
@@ -302,6 +345,13 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
     pipelineMock.mockRejectedValueOnce(new Error("Failed to load model"));
 
     const POST = await loadPost();
+
+    // The first request sees the model as still initializing and returns 503.
+    const initializingResponse = await POST(createRequest({ inputs: ["hello"] }));
+    expect(initializingResponse.status).toBe(503);
+
+    // Allow the rejected init promise to settle and set the init error.
+    await Promise.resolve();
 
     const response = await POST(createRequest({ inputs: ["hello"] }));
     const json = await response.json();
