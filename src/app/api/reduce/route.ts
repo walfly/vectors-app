@@ -55,7 +55,22 @@ function parseReductionRequest(body: unknown):
   }
 
   const matrix: number[][] = [];
-  let dimension: number | null = null;
+  const firstRow = vectors[0];
+
+  if (!Array.isArray(firstRow)) {
+    return {
+      error:
+        "Invalid request body: 'vectors[0]' must be an array of numbers.",
+    };
+  }
+
+  if (firstRow.length === 0) {
+    return {
+      error: "Invalid request body: 'vectors[0]' must not be empty.",
+    };
+  }
+
+  const inputDimension = firstRow.length;
 
   for (let i = 0; i < vectors.length; i += 1) {
     const row = vectors[i];
@@ -72,16 +87,12 @@ function parseReductionRequest(body: unknown):
       };
     }
 
-    if (dimension === null) {
-      dimension = row.length;
-    } else if (row.length !== dimension) {
+    if (row.length !== inputDimension) {
       return {
         error:
           "Invalid request body: all vectors must have the same length (input dimension).",
       };
     }
-
-    const numericRow = new Array<number>(row.length);
 
     for (let j = 0; j < row.length; j += 1) {
       const value = row[j];
@@ -91,11 +102,9 @@ function parseReductionRequest(body: unknown):
           error: `Invalid request body: 'vectors[${i}][${j}]' must be a finite number.`,
         };
       }
-
-      numericRow[j] = value;
     }
 
-    matrix.push(numericRow);
+    matrix.push(row as number[]);
   }
 
   const methodValue: ReductionMethod =
@@ -120,8 +129,6 @@ function parseReductionRequest(body: unknown):
         "Invalid request body: 'dimensions' must be either 2 or 3 if provided.",
     };
   }
-
-  const inputDimension = dimension as number;
 
   if (dimensionsValue > inputDimension) {
     return {
