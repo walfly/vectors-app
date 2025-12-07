@@ -6,8 +6,8 @@ import {
   getEmbeddingsPipeline,
   getEmbeddingsPipelineError,
   isEmbeddingsPipelineReady,
-} from "../../../lib/embeddings/pipeline";
-import { buildErrorResponse } from "../../../lib/utils/responses";
+} from "@/lib/embeddings/pipeline";
+import { buildErrorResponse } from "@/lib/utils/responses";
 
 export const runtime = "nodejs";
 const MAX_INPUTS = 64;
