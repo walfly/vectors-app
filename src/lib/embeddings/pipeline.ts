@@ -1,4 +1,4 @@
-const { pipeline } = require("@xenova/transformers");
+import { pipeline } from "@huggingface/transformers";
 
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
@@ -21,10 +21,10 @@ const state: EmbeddingsPipelineState = {
 
 function startEmbeddingsPipelineInitialization() {
   const initPromise = pipeline("feature-extraction", MODEL_ID)
-    .then((fn: EmbeddingsPipeline) => {
+    .then((fn) => {
       state.pipeline = fn as EmbeddingsPipeline;
     })
-    .catch((error: Error) => {
+    .catch((error) => {
       const normalizedError =
         error instanceof Error ? error : new Error(String(error));
 

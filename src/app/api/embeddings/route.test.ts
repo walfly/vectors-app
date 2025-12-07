@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@xenova/transformers", () => ({
+vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(),
 }));
 
@@ -152,7 +152,7 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
   it("returns 200 with embeddings when the model outputs via tolist()", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers.pipeline as unknown as ReturnType<
       typeof vi.fn
     >;
@@ -202,7 +202,7 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
   it("returns 500 when tolist() returns an empty array", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers.pipeline as unknown as ReturnType<
       typeof vi.fn
     >;
@@ -234,7 +234,7 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
   it("returns 200 with embeddings when the model outputs dims/data", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers.pipeline as unknown as ReturnType<
       typeof vi.fn
     >;
@@ -298,7 +298,7 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
   it("returns 500 when embeddings rows have inconsistent dimensions", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers.pipeline as unknown as ReturnType<
       typeof vi.fn
     >;
@@ -337,7 +337,7 @@ describe("POST /api/embeddings - embeddings pipeline integration", () => {
   it("returns 500 when the embeddings model fails to initialize", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers.pipeline as unknown as ReturnType<
       typeof vi.fn
     >;

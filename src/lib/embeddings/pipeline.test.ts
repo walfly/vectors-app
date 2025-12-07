@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@xenova/transformers", () => ({
+vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(),
 }));
 
@@ -26,7 +26,7 @@ describe("embeddings pipeline lifecycle", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers
       .pipeline as unknown as ReturnType<typeof vi.fn>;
 
@@ -74,7 +74,7 @@ describe("embeddings pipeline lifecycle", () => {
   });
 
   it("clears pipeline state when reset helper is used in tests", async () => {
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers
       .pipeline as unknown as ReturnType<typeof vi.fn>;
 

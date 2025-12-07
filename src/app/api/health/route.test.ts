@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@xenova/transformers", () => ({
+vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(),
 }));
 
@@ -46,7 +46,7 @@ describe("GET /api/health - interaction with /api/warm", () => {
 
     process.env.KV_REST_API_URL = "https://example.com/kv";
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers
       .pipeline as unknown as ReturnType<typeof vi.fn>;
 
@@ -102,7 +102,7 @@ describe("GET /api/health - interaction with /api/warm", () => {
   it("returns 'ok' once the embeddings model has been warmed", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers
       .pipeline as unknown as ReturnType<typeof vi.fn>;
 
@@ -140,7 +140,7 @@ describe("GET /api/health - interaction with /api/warm", () => {
   it("returns 'error' when model initialization fails", async () => {
     vi.resetModules();
 
-    const transformers = await import("@xenova/transformers");
+    const transformers = await import("@huggingface/transformers");
     const pipelineMock = transformers
       .pipeline as unknown as ReturnType<typeof vi.fn>;
 
