@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
 
-import { getEmbeddingsModelStatus, MODEL_ID } from "../../../lib/embeddings/pipeline";
+import {
+  getEmbeddingsServerEnvVarName,
+  getEmbeddingsServerUrl,
+} from "../../../lib/embeddings/serverConfig";
 
 export const runtime = "edge";
 
 type HealthStatus = "ok" | "degraded" | "error";
 
-type HealthResponseBody = {
+type EmbeddingsHealthResponseBody = {
   status: HealthStatus;
   modelLoaded: boolean;
   initializing: boolean;
   modelName: string;
+};
+
+type HealthResponseBody = EmbeddingsHealthResponseBody & {
   kvAvailable: boolean;
 };
 
@@ -22,24 +28,39 @@ function getKvAvailable(): boolean {
   );
 }
 
+function buildFallbackEmbeddingsHealth(): EmbeddingsHealthResponseBody {
+  return {
+    status: "error",
+    modelLoaded: false,
+    initializing: false,
+    modelName: `unknown (set ${getEmbeddingsServerEnvVarName()} for details)`,
+  };
+}
+
 export async function GET() {
-  const { modelLoaded, initializing, error } = getEmbeddingsModelStatus();
+  const targetUrl = getEmbeddingsServerUrl("/api/health");
 
-  let status: HealthStatus;
+  let embeddingsHealth: EmbeddingsHealthResponseBody;
 
-  if (error) {
-    status = "error";
-  } else if (modelLoaded) {
-    status = "ok";
+  if (!targetUrl) {
+    embeddingsHealth = buildFallbackEmbeddingsHealth();
   } else {
-    status = "degraded";
+    try {
+      const upstream = await fetch(targetUrl, { method: "GET" });
+      const contentType = upstream.headers.get("content-type") ?? "";
+
+      if (contentType.includes("application/json")) {
+        embeddingsHealth = (await upstream.json()) as EmbeddingsHealthResponseBody;
+      } else {
+        embeddingsHealth = buildFallbackEmbeddingsHealth();
+      }
+    } catch {
+      embeddingsHealth = buildFallbackEmbeddingsHealth();
+    }
   }
 
   const body: HealthResponseBody = {
-    status,
-    modelLoaded,
-    initializing,
-    modelName: MODEL_ID,
+    ...embeddingsHealth,
     kvAvailable: getKvAvailable(),
   };
 
