@@ -88,9 +88,7 @@ function parseReductionRequest(body: unknown):
 
       if (typeof value !== "number" || !Number.isFinite(value)) {
         return {
-          error: `Invalid request body: 'vectors[${i}][${j}]' must be a finite number. Received ${String(
-            value,
-          )}.`,
+          error: `Invalid request body: 'vectors[${i}][${j}]' must be a finite number.`,
         };
       }
 
