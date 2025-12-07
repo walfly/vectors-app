@@ -64,7 +64,8 @@ export function restartEmbeddingsPipeline() {
 /**
 * Test-only helper to clear the embeddings pipeline singleton state.
 *
-* Not intended for use in production code.
+* Not intended for use in production code. This function will throw
+* in any environment where `process.env.NODE_ENV !== "test"`.
 */
 export function __resetEmbeddingsPipelineStateForTests() {
   if (process.env.NODE_ENV !== "test") {
