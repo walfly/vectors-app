@@ -22,8 +22,17 @@ type ReductionApiResponse = {
 type PlaygroundStatus = "idle" | "embedding" | "reducing";
 
 function parseInputPhrases(raw: string): string[] {
-  return raw
-    .split(/[\n,]/)
+  const normalized = raw.replace(/\r\n/g, "\n");
+
+  if (normalized.includes("\n")) {
+    return normalized
+      .split("\n")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+  }
+
+  return normalized
+    .split(",")
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 }
@@ -188,9 +197,9 @@ export function EmbeddingPlayground() {
             Text inputs
           </span>
           <span className="text-xs text-zinc-400">
-            Enter one word or short phrase per line (or comma-separated). The
-            playground will generate embeddings for each entry and project them
-            into 3D.
+            Enter one word or short phrase per line. For a single line, you can
+            separate multiple entries with commas. The playground will generate
+            embeddings for each entry and project them into 3D.
           </span>
           <textarea
             value={input}
