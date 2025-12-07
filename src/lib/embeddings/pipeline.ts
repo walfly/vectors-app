@@ -67,6 +67,12 @@ export function restartEmbeddingsPipeline() {
 * Not intended for use in production code.
 */
 export function __resetEmbeddingsPipelineStateForTests() {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error(
+      "__resetEmbeddingsPipelineStateForTests is test-only and must not be used in production code.",
+    );
+  }
+
   resetEmbeddingsPipelineState();
 }
 
