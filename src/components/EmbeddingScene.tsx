@@ -1,9 +1,9 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { Html, OrbitControls } from "@react-three/drei";
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export type EmbeddingPoint = {
   id: string;
@@ -19,6 +19,9 @@ export type EmbeddingSceneProps = {
   highlightColor?: string;
   emptyState?: ReactNode;
 };
+
+const LABEL_VERTICAL_OFFSET = 4; // multiplier for pointSize
+const LABEL_DISTANCE_FACTOR = 8;
 
 const defaultEmptyState = (
   <p className="text-xs text-zinc-400">No points to display yet.</p>
@@ -103,7 +106,6 @@ function EmbeddingPointMesh({
 
   return (
     <mesh
-      position={point.position}
       onPointerOver={(event) => {
         event.stopPropagation();
         onHoverChange(point.id);
@@ -126,6 +128,22 @@ type EmbeddingSceneInnerProps = {
   highlightColor: string;
 };
 
+function getLabelStyle(
+  isHighlighted: boolean,
+  defaultColor: string,
+  highlightColor: string,
+): CSSProperties {
+  return {
+    // Labels are intentionally non-interactive overlays so pointer events
+    // continue to hit the underlying 3D points.
+    pointerEvents: "none",
+    fontSize: isHighlighted ? "11px" : "9px",
+    color: isHighlighted ? highlightColor : defaultColor,
+    whiteSpace: "nowrap",
+    textShadow: "0 1px 2px rgba(0, 0, 0, 0.85)",
+  };
+}
+
 function EmbeddingSceneInner({
   points,
   pointSize,
@@ -138,17 +156,39 @@ function EmbeddingSceneInner({
     <>
       <ambientLight intensity={0.5} />
       <directionalLight position={[4, 4, 2]} intensity={0.8} />
-      {points.map((point) => (
-        <EmbeddingPointMesh
-          key={point.id}
-          point={point}
-          size={pointSize}
-          color={defaultPointColor}
-          highlightColor={highlightColor}
-          isHighlighted={hoveredId === point.id}
-          onHoverChange={setHoveredId}
-        />
-      ))}
+      {points.map((point) => {
+        const isHighlighted = hoveredId === point.id;
+
+        return (
+          <group key={point.id} position={point.position}>
+            <EmbeddingPointMesh
+              point={point}
+              size={pointSize}
+              color={defaultPointColor}
+              highlightColor={highlightColor}
+              isHighlighted={isHighlighted}
+              onHoverChange={setHoveredId}
+            />
+            {point.label && (
+              <Html
+                position={[
+                  0,
+                  pointSize * LABEL_VERTICAL_OFFSET,
+                  0,
+                ]}
+                distanceFactor={LABEL_DISTANCE_FACTOR}
+                style={getLabelStyle(
+                  isHighlighted,
+                  defaultPointColor,
+                  highlightColor,
+                )}
+              >
+                {point.label}
+              </Html>
+            )}
+          </group>
+        );
+      })}
     </>
   );
 }
