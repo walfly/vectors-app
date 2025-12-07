@@ -9,6 +9,7 @@ type HealthStatus = "ok" | "degraded" | "error";
 type HealthResponseBody = {
   status: HealthStatus;
   modelLoaded: boolean;
+  initializing: boolean;
   modelName: string;
   kvAvailable: boolean;
 };
@@ -22,7 +23,7 @@ function getKvAvailable(): boolean {
 }
 
 export async function GET() {
-  const { modelLoaded, error } = getEmbeddingsModelStatus();
+  const { modelLoaded, initializing, error } = getEmbeddingsModelStatus();
 
   let status: HealthStatus;
 
@@ -37,6 +38,7 @@ export async function GET() {
   const body: HealthResponseBody = {
     status,
     modelLoaded,
+    initializing,
     modelName: MODEL_ID,
     kvAvailable: getKvAvailable(),
   };

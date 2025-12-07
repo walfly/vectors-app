@@ -31,6 +31,7 @@ describe("GET /api/health - base status", () => {
     expect(json).toEqual({
       status: "degraded",
       modelLoaded: false,
+      initializing: false,
       modelName: "Xenova/all-MiniLM-L6-v2",
       kvAvailable: true,
     });
@@ -40,6 +41,64 @@ describe("GET /api/health - base status", () => {
 });
 
 describe("GET /api/health - interaction with /api/warm", () => {
+  it("reports 'initializing: true' while the model is warming up", async () => {
+    vi.resetModules();
+
+    process.env.KV_REST_API_URL = "https://example.com/kv";
+
+    const transformers = await import("@xenova/transformers");
+    const pipelineMock = transformers
+      .pipeline as unknown as ReturnType<typeof vi.fn>;
+
+    const embeddingsFn = vi.fn(async () => ({
+      tolist: () => [],
+    }));
+
+    let resolvePipelineInit: (() => void) | undefined;
+
+    pipelineMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePipelineInit = () => resolve(embeddingsFn);
+        }),
+    );
+
+    const warmGET = await loadWarmGet();
+
+    // Start warm-up but intentionally do not await completion yet so
+    // the embeddings pipeline remains in an initializing state.
+    const warmPromise = warmGET();
+
+    const GET = await loadHealthGet();
+
+    const response = await GET();
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({
+      status: "degraded",
+      modelLoaded: false,
+      initializing: true,
+      modelName: "Xenova/all-MiniLM-L6-v2",
+      kvAvailable: true,
+    });
+
+    // Complete initialization to avoid leaving a hanging promise.
+    resolvePipelineInit?.();
+
+    const warmResponse = await warmPromise;
+    const warmJson = await warmResponse.json();
+
+    expect(warmResponse.status).toBe(200);
+    expect(warmJson).toEqual({
+      warmed: true,
+      modelName: "Xenova/all-MiniLM-L6-v2",
+      status: "ready",
+    });
+
+    delete process.env.KV_REST_API_URL;
+  });
+
   it("returns 'ok' once the embeddings model has been warmed", async () => {
     vi.resetModules();
 
