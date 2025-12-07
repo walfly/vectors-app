@@ -3,6 +3,7 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 export type EmbeddingPoint = {
   id: string;
@@ -16,6 +17,7 @@ export type EmbeddingSceneProps = {
   backgroundColor?: string;
   defaultPointColor?: string;
   highlightColor?: string;
+  emptyState?: ReactNode;
 };
 
 type Bounds = {
@@ -128,10 +130,6 @@ function EmbeddingSceneInner({
 }: EmbeddingSceneInnerProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  if (!points.length) {
-    return null;
-  }
-
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -157,10 +155,18 @@ export function EmbeddingScene({
   backgroundColor = "#020617",
   defaultPointColor = "#e5e7eb",
   highlightColor = "#facc15",
+  emptyState,
 }: EmbeddingSceneProps) {
   const { center, radius } = useMemo(() => computeBounds(points), [points]);
 
   const cameraDistance = radius * 2.5;
+
+  const resolvedEmptyState =
+    emptyState ?? (
+      <div className="rounded-md border border-dashed border-zinc-700/80 bg-zinc-900/80 px-3 py-2 text-xs text-zinc-400 backdrop-blur">
+        No points to display yet.
+      </div>
+    );
 
   return (
     <div className="relative h-[360px] w-full md:h-[480px]">
@@ -183,6 +189,11 @@ export function EmbeddingScene({
         </group>
         <OrbitControls enableDamping enablePan enableZoom />
       </Canvas>
+      {!points.length && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          {resolvedEmptyState}
+        </div>
+      )}
     </div>
   );
 }
