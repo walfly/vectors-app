@@ -124,21 +124,29 @@ export function formatNumber(value: number | null | undefined): string {
   return value.toFixed(3);
 }
 
+/**
+* Computes the average pairwise cosine similarity for a set of embeddings.
+*
+* To keep the cost predictable for very large experiments, the computation
+* is performed on at most the first `maxVectors` embeddings (default 200).
+*/
 export function computeAveragePairwiseCosine(
   embeddings: number[][] | null,
+  maxVectors = 200,
 ): number | null {
   if (!embeddings || embeddings.length < 2) {
     return null;
   }
 
-  const count = embeddings.length;
+  const slice = embeddings.slice(0, maxVectors);
+  const count = slice.length;
   let sum = 0;
   let pairs = 0;
 
   for (let i = 0; i < count; i += 1) {
     for (let j = i + 1; j < count; j += 1) {
       try {
-        sum += cosineSimilarity(embeddings[i], embeddings[j]);
+        sum += cosineSimilarity(slice[i], slice[j]);
         pairs += 1;
       } catch {
         // Ignore invalid vector pairs.
