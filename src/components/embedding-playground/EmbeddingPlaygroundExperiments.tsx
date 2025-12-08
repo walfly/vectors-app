@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 
-import type { Experiment } from "@/components/EmbeddingPlaygroundState";
+import type { Experiment } from "./EmbeddingPlaygroundState";
 
 type EmbeddingPlaygroundExperimentsProps = {
   experiments: Experiment[];

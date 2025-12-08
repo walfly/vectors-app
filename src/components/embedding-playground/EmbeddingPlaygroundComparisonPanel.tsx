@@ -1,8 +1,8 @@
 import {
   computeAveragePairwiseCosine,
   formatNumber,
-} from "@/components/EmbeddingPlaygroundState";
-import type { Experiment } from "@/components/EmbeddingPlaygroundState";
+} from "./EmbeddingPlaygroundState";
+import type { Experiment } from "./EmbeddingPlaygroundState";
 import { cosineSimilarity, euclideanDistance } from "@/lib/vectors";
 
 type FocusedComparison = {

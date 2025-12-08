@@ -1,4 +1,4 @@
-import type { EmbeddingPoint } from "@/components/EmbeddingScene";
+import type { EmbeddingPoint } from "./EmbeddingScene";
 
 type EmbeddingPlaygroundInputsAndLabelsProps = {
   hasPoints: boolean;

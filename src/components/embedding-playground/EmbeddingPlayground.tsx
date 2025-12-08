@@ -3,12 +3,12 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { EmbeddingPlaygroundComparisonPanel } from "@/components/EmbeddingPlaygroundComparisonPanel";
-import { EmbeddingPlaygroundExperiments } from "@/components/EmbeddingPlaygroundExperiments";
-import { EmbeddingPlaygroundForm } from "@/components/EmbeddingPlaygroundForm";
-import { EmbeddingPlaygroundInputsAndLabels } from "@/components/EmbeddingPlaygroundInputsAndLabels";
-import { EmbeddingPlaygroundManipulationPanel } from "@/components/EmbeddingPlaygroundManipulationPanel";
-import { EmbeddingPlaygroundSceneSection } from "@/components/EmbeddingPlaygroundSceneSection";
+import { EmbeddingPlaygroundComparisonPanel } from "./EmbeddingPlaygroundComparisonPanel";
+import { EmbeddingPlaygroundExperiments } from "./EmbeddingPlaygroundExperiments";
+import { EmbeddingPlaygroundForm } from "./EmbeddingPlaygroundForm";
+import { EmbeddingPlaygroundInputsAndLabels } from "./EmbeddingPlaygroundInputsAndLabels";
+import { EmbeddingPlaygroundManipulationPanel } from "./EmbeddingPlaygroundManipulationPanel";
+import { EmbeddingPlaygroundSceneSection } from "./EmbeddingPlaygroundSceneSection";
 import {
   buildEmbeddingPoints,
   createExperiment,
@@ -22,7 +22,7 @@ import {
   type PlaygroundStatus,
   type ReductionApiResponse,
   type StoredPlaygroundState,
-} from "@/components/EmbeddingPlaygroundState";
+} from "./EmbeddingPlaygroundState";
 
 const MAX_SELECTED_POINTS = 6;
 

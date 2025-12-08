@@ -1,5 +1,5 @@
-import { formatNumber } from "@/components/EmbeddingPlaygroundState";
-import type { Experiment } from "@/components/EmbeddingPlaygroundState";
+import { formatNumber } from "./EmbeddingPlaygroundState";
+import type { Experiment } from "./EmbeddingPlaygroundState";
 import { cosineSimilarity, euclideanDistance } from "@/lib/vectors";
 
 type EmbeddingPlaygroundManipulationPanelProps = {
