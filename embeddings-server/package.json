@@ -16,11 +16,13 @@
     "@huggingface/transformers": "^3.8.1",
     "express": "^5.2.1",
     "onnxruntime-node": "^1.23.2",
+    "pg": "^8.16.3",
     "redis": "^5.10.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   }
