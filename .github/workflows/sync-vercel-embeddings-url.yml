@@ -82,6 +82,42 @@ jobs:
             // append /api/embeddings, /api/warm, /api/health, etc.
             renderUrl = renderUrl.replace(/\/+$/, '');
 
+            // Only handle Render preview deployments. If the URL host is not
+            // a Render domain, skip syncing to avoid cross-provider updates.
+            try {
+              const urlObject = new URL(renderUrl);
+              const hostname = urlObject.hostname.toLowerCase();
+
+              const allowedRenderHostSuffixes = ['onrender.com'];
+
+              // Render preview deployments live on subdomains of onrender.com,
+              // e.g. my-app.onrender.com. We also allow bare onrender.com in
+              // case Render ever uses it directly. Custom domains are
+              // intentionally not synced here.
+              const isRenderHost = allowedRenderHostSuffixes.some((suffix) =>
+                hostname === suffix || hostname.endsWith(`.${suffix}`),
+              );
+
+              if (!isRenderHost) {
+                core.info(
+                  `Deployment URL '${renderUrl}' is not a Render host (hostname='${hostname}', allowed suffixes='${allowedRenderHostSuffixes.join(",")}'); skipping Vercel sync.`,
+                );
+                return;
+              }
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : typeof error === 'string'
+                    ? error
+                    : String(error);
+
+              core.warning(
+                `Deployment URL '${renderUrl}' is not a valid URL; skipping Vercel sync. Error: ${message}`,
+              );
+              return;
+            }
+
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const sha = deployment?.sha;
