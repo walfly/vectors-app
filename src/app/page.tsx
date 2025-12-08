@@ -1,4 +1,5 @@
 import { EmbeddingPlayground } from "@/components/EmbeddingPlayground";
+import { VectorArithmeticLab } from "@/components/VectorArithmeticLab";
 
 export default function Home() {
   return (
@@ -17,6 +18,22 @@ export default function Home() {
         </header>
 
         <EmbeddingPlayground />
+
+        <section className="border-t border-zinc-900 pt-6">
+          <div className="mb-4 max-w-2xl space-y-1 text-sm text-zinc-400">
+            <h2 className="text-base font-semibold text-zinc-100">
+              Vector Arithmetic Laboratory
+            </h2>
+            <p>
+              Explore the classic word algebra examples built on top of the
+              same embeddings used in the playground. Build equations, make a
+              prediction, and then see which words land closest to the result
+              in embedding space.
+            </p>
+          </div>
+
+          <VectorArithmeticLab />
+        </section>
       </div>
     </main>
   );
