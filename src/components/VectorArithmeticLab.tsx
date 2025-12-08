@@ -49,6 +49,20 @@ function normalizeToken(raw: string): string {
   return raw.trim();
 }
 
+/**
+* Validates that the arithmetic API returned a non-empty vector of finite numbers.
+* The API contract does not allow empty vectors or non-finite numeric values.
+*/
+function isValidResultVector(value: unknown): value is number[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return false;
+  }
+
+  return value.every((element) => {
+    return typeof element === "number" && Number.isFinite(element);
+  });
+}
+
 function buildEquationPreview(terms: EquationTerm[]): string {
   const activeTerms = terms.filter((term) => {
     return normalizeToken(term.token).length > 0 && Number.isFinite(term.weight);
@@ -439,14 +453,14 @@ export function VectorArithmeticLab() {
           result?: unknown;
         };
 
-        if (!Array.isArray(json.result)) {
-          setError("/api/arithmetic returned an unexpected response body.");
+        if (!isValidResultVector(json.result)) {
+          setError("/api/arithmetic returned a malformed result vector.");
           setStatus("idle");
           setStatusMessage(null);
           return;
         }
 
-        arithmeticResult = { result: json.result as number[] };
+        arithmeticResult = { result: json.result };
       } catch (fetchError) {
         setError(
           fetchError instanceof Error
