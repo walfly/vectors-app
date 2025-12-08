@@ -313,33 +313,31 @@ export function EmbeddingPlayground() {
   }, []);
 
   const handleDuplicateExperiment = useCallback(() => {
-    if (!activeExperiment) {
-      return;
-    }
-
     setPlaygroundState((current) => {
+      const { experiments, activeExperimentId } = current;
+      const source = experiments.find((experiment) => {
+        return experiment.id === activeExperimentId;
+      });
+
+      if (!source) {
+        return current;
+      }
+
       const createdAt = Date.now();
       const duplicateExperiment: Experiment = {
-        ...activeExperiment,
-        id: `exp-${createdAt}-${current.experiments.length + 1}`,
-        name: `${activeExperiment.name || "Experiment"} (copy)` as string,
+        ...source,
+        id: `exp-${createdAt}-${experiments.length + 1}`,
+        name: `${source.name || "Experiment"} (copy)` as string,
         createdAt,
-        points: activeExperiment.points.map((point) => ({ ...point })),
-        originalPoints: activeExperiment.originalPoints.map((point) => ({
-          ...point,
-        })),
-        embeddings: activeExperiment.embeddings
-          ? activeExperiment.embeddings.map((row) => [...row])
+        points: source.points.map((point) => ({ ...point })),
+        originalPoints: source.originalPoints.map((point) => ({ ...point })),
+        embeddings: source.embeddings
+          ? source.embeddings.map((row) => [...row])
           : null,
       };
 
-      const experimentsWithDuplicate = [
-        ...current.experiments,
-        duplicateExperiment,
-      ];
-
       return {
-        experiments: experimentsWithDuplicate,
+        experiments: [...experiments, duplicateExperiment],
         activeExperimentId: duplicateExperiment.id,
       };
     });
@@ -348,7 +346,7 @@ export function EmbeddingPlayground() {
     setError(null);
     setStatus("idle");
     setStatusMessage(null);
-  }, [activeExperiment]);
+  }, []);
 
   const handleResetExperiment = useCallback(() => {
     handleActiveExperimentChange((experiment) => ({
