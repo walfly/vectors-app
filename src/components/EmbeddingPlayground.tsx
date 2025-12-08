@@ -850,7 +850,11 @@ export function EmbeddingPlayground() {
         pointIndex === index
           ? {
               ...point,
-              position: [...original.position],
+              position: [...original.position] as [
+                number,
+                number,
+                number,
+              ],
             }
           : point,
       );
@@ -1166,7 +1170,10 @@ export function EmbeddingPlayground() {
                         <button
                           type="button"
                           onClick={() =>
-                            handleNudgeSelectedPoint(axisIndex, -0.2)
+                            handleNudgeSelectedPoint(
+                              axisIndex as 0 | 1 | 2,
+                              -0.2,
+                            )
                           }
                           className="h-6 w-6 rounded border border-zinc-700 text-[10px] text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
                         >
@@ -1175,7 +1182,10 @@ export function EmbeddingPlayground() {
                         <button
                           type="button"
                           onClick={() =>
-                            handleNudgeSelectedPoint(axisIndex, 0.2)
+                            handleNudgeSelectedPoint(
+                              axisIndex as 0 | 1 | 2,
+                              0.2,
+                            )
                           }
                           className="h-6 w-6 rounded border border-zinc-700 text-[10px] text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
                         >
