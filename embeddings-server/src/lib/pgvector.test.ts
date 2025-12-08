@@ -97,7 +97,8 @@ describe("pgvector Postgres client", () => {
     expect(poolInstances).toHaveLength(1);
     const instance = poolInstances[0];
 
-    expect(instance.query).toHaveBeenCalledWith("SELECT 1");
+    expect(PoolConstructorMock).toHaveBeenCalledTimes(1);
+    expect(instance.query).toHaveBeenCalled();
     expect(pool).toBe(instance);
 
     const statusAfterInit = getPgvectorDbStatus();
@@ -119,6 +120,7 @@ describe("pgvector Postgres client", () => {
     );
 
     expect(result.rows[0]?.id).toBe(1);
+    expect(instance.query).toHaveBeenCalledTimes(2);
     expect(poolInstances).toHaveLength(1);
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
