@@ -13,6 +13,14 @@ type FocusedComparison = {
   distance: number;
 };
 
+type ComparisonRow = {
+  index: number;
+  cosine: number | null;
+  distance: number | null;
+  primaryLabel: string;
+  secondaryLabel: string;
+};
+
 type EmbeddingPlaygroundComparisonPanelProps = {
   experiments: Experiment[];
   primaryComparisonId: string | null;
@@ -104,7 +112,7 @@ export function EmbeddingPlaygroundComparisonPanel({
       ? Math.min(Math.max(comparisonFocusIndex, 0), maxCommonLength - 1)
       : 0;
 
-  let focusedComparison: FocusedComparison | null = null;
+  const comparisonRows: ComparisonRow[] = [];
 
   if (
     hasComparisonPair &&
@@ -112,32 +120,49 @@ export function EmbeddingPlaygroundComparisonPanel({
     secondaryExperiment &&
     maxCommonLength > 0
   ) {
-    const primaryVector = primaryExperiment.embeddings![clampedComparisonIndex];
-    const secondaryVector =
-      secondaryExperiment.embeddings![clampedComparisonIndex];
+    for (let index = 0; index < maxCommonLength; index += 1) {
+      const leftVector = primaryExperiment.embeddings![index];
+      const rightVector = secondaryExperiment.embeddings![index];
 
-    try {
-      const cosine = cosineSimilarity(primaryVector, secondaryVector);
-      const distance = euclideanDistance(primaryVector, secondaryVector);
+      let cosine: number | null = null;
+      let distance: number | null = null;
 
-      const primaryLabel =
-        primaryExperiment.points[clampedComparisonIndex]?.label ??
-        `Item ${clampedComparisonIndex + 1}`;
-      const secondaryLabel =
-        secondaryExperiment.points[clampedComparisonIndex]?.label ??
-        `Item ${clampedComparisonIndex + 1}`;
+      try {
+        cosine = cosineSimilarity(leftVector, rightVector);
+        distance = euclideanDistance(leftVector, rightVector);
+      } catch {
+        // Ignore invalid vector pairs.
+      }
 
-      focusedComparison = {
-        index: clampedComparisonIndex,
-        primaryLabel,
-        secondaryLabel,
+      comparisonRows.push({
+        index,
         cosine,
         distance,
-      };
-    } catch {
-      focusedComparison = null;
+        primaryLabel:
+          primaryExperiment.points[index]?.label ?? `Item ${index + 1}`,
+        secondaryLabel:
+          secondaryExperiment.points[index]?.label ?? `Item ${index + 1}`,
+      });
     }
   }
+
+  const focusedComparison: FocusedComparison | null = (() => {
+    const row = comparisonRows.find(
+      (candidate) => candidate.index === clampedComparisonIndex,
+    );
+
+    if (!row || row.cosine == null || row.distance == null) {
+      return null;
+    }
+
+    return {
+      index: row.index,
+      primaryLabel: row.primaryLabel,
+      secondaryLabel: row.secondaryLabel,
+      cosine: row.cosine,
+      distance: row.distance,
+    } satisfies FocusedComparison;
+  })();
 
   const primaryAverageCosine = computeAveragePairwiseCosine(
     primaryExperiment?.embeddings ?? null,
@@ -299,52 +324,31 @@ export function EmbeddingPlaygroundComparisonPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: maxCommonLength }).map((_, index) => {
-                    const leftVector = primaryExperiment.embeddings![index];
-                    const rightVector =
-                      secondaryExperiment.embeddings![index];
-
-                    let cosine: number | null = null;
-                    let distance: number | null = null;
-
-                    try {
-                      cosine = cosineSimilarity(leftVector, rightVector);
-                      distance = euclideanDistance(leftVector, rightVector);
-                    } catch {
-                      // Ignore invalid vector pairs.
-                    }
-
-                    const leftLabel =
-                      primaryExperiment.points[index]?.label ??
-                      `Item ${index + 1}`;
-                    const rightLabel =
-                      secondaryExperiment.points[index]?.label ??
-                      `Item ${index + 1}`;
-
-                    const isFocused = index === clampedComparisonIndex;
+                  {comparisonRows.map((row) => {
+                    const isFocused = row.index === clampedComparisonIndex;
 
                     return (
                       <tr
-                        key={index}
+                        key={row.index}
                         className={[
                           "rounded-md border border-zinc-800",
                           isFocused ? "bg-zinc-900" : "bg-zinc-950",
                         ].join(" ")}
                       >
                         <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-500">
-                          {index + 1}
+                          {row.index + 1}
                         </td>
                         <td className="truncate px-2 py-1 text-zinc-200">
-                          {leftLabel}
+                          {row.primaryLabel}
                         </td>
                         <td className="truncate px-2 py-1 text-zinc-200">
-                          {rightLabel}
+                          {row.secondaryLabel}
                         </td>
                         <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-300">
-                          {formatNumber(cosine)}
+                          {formatNumber(row.cosine)}
                         </td>
                         <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-300">
-                          {formatNumber(distance)}
+                          {formatNumber(row.distance)}
                         </td>
                       </tr>
                     );
