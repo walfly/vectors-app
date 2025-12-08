@@ -259,6 +259,83 @@ pnpm start   # Start the embeddings server
 pnpm test    # Run Vitest tests for the embeddings pipeline
 ```
 
+### Wikipedia title embeddings (pgvector)
+
+The embeddings server can store English Wikipedia article title embeddings in
+Postgres using the `pgvector` extension.
+
+Schema migrations for this table live under `embeddings-server/sql/`.
+
+To create the table on a fresh database (for example, the local Docker
+Compose Postgres instance), point `PGVECTOR_DATABASE_URL` at your Postgres
+instance (for local dev this is often the Docker Compose URL) and run:
+
+```bash
+cd embeddings-server
+
+# Example only – adjust to your environment and avoid using real
+# production credentials in shell history.
+export PGVECTOR_DATABASE_URL="postgres://postgres:postgres@localhost:5432/embeddings"
+
+psql "$PGVECTOR_DATABASE_URL" \
+  -f sql/001_wikipedia_title_embeddings.sql
+```
+
+This migration will:
+
+- Ensure the `vector` extension is installed.
+- Create a `wikipedia_title_embeddings` table with a `vector(384)` column.
+- Add an `ivfflat` index on the `embedding` column tuned for cosine
+  similarity search (with a default `lists = 100`).
+
+The `vector(384)` definition matches the output dimensionality of the
+`Xenova/all-MiniLM-L6-v2` model used by the embeddings server. If you switch
+to a different model with a new embedding dimension, you will need to update
+this migration (and any backfill scripts) accordingly.
+
+Once the schema is in place, you can **manually** backfill embeddings for a
+corpus of English Wikipedia titles using the existing embeddings pipeline.
+This is an optional, operational step and should not be wired into normal
+local dev, CI, or server startup flows.
+
+```bash
+cd embeddings-server
+
+# Example: run a one-off manual backfill against a local Postgres instance.
+# This may take several minutes and consume CPU/DB resources depending on
+# the target count and hardware. Only run this when you are deliberately
+# populating the `wikipedia_title_embeddings` table.
+PGVECTOR_DATABASE_URL="postgres://postgres:postgres@localhost:5432/embeddings" \
+WIKIPEDIA_TITLES_TARGET_COUNT=20000 \
+pnpm run backfill:wikipedia-titles:build
+```
+
+If you have already built the embeddings server (for example, in CI or inside
+an image), you can skip the extra build step and invoke the compiled script
+directly:
+
+```bash
+cd embeddings-server
+
+PGVECTOR_DATABASE_URL="..." \
+WIKIPEDIA_TITLES_TARGET_COUNT=20000 \
+pnpm run backfill:wikipedia-titles
+```
+
+The backfill script:
+
+- Fetches a configurable number of English Wikipedia titles (defaults to
+  about 20k, clamped between 10k and 50k) from the public MediaWiki API.
+- Batches titles through the existing `Xenova/all-MiniLM-L6-v2` embeddings
+  pipeline with mean pooling and L2 normalization.
+- Upserts rows into the `wikipedia_title_embeddings` table using
+  parameterized SQL and `INSERT ... ON CONFLICT (title) DO UPDATE` so it can
+  be rerun safely.
+
+In production, point `PGVECTOR_DATABASE_URL` at your managed Postgres
+instance. The backfill script is a manual, one-off CLI entrypoint and is
+never invoked automatically by the embeddings server.
+
 ---
 
 ## Deployment
