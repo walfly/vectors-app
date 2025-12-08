@@ -23,7 +23,8 @@ import {
   type ReductionApiResponse,
   type StoredPlaygroundState,
 } from "@/components/EmbeddingPlaygroundState";
-import { cosineSimilarity, euclideanDistance } from "@/lib/vectors";
+
+const MAX_SELECTED_POINTS = 6;
 
 export function EmbeddingPlayground() {
   const [playgroundState, setPlaygroundState] = useState<StoredPlaygroundState>(
@@ -33,8 +34,7 @@ export function EmbeddingPlayground() {
   const [status, setStatus] = useState<PlaygroundStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [manipulationMode, setManipulationMode] = useState(false);
-  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [selectedPointIds, setSelectedPointIds] = useState<string[]>([]);
   const [primaryComparisonId, setPrimaryComparisonId] =
     useState<string | null>(null);
   const [secondaryComparisonId, setSecondaryComparisonId] =
@@ -273,6 +273,7 @@ export function EmbeddingPlayground() {
 
         setStatus("idle");
         setStatusMessage(null);
+        setSelectedPointIds([]);
       } catch (fetchError) {
         setError(
           fetchError instanceof Error
@@ -297,7 +298,7 @@ export function EmbeddingPlayground() {
       };
     });
 
-    setSelectedPointId(null);
+    setSelectedPointIds([]);
     setError(null);
     setStatus("idle");
     setStatusMessage(null);
@@ -333,7 +334,7 @@ export function EmbeddingPlayground() {
       };
     });
 
-    setSelectedPointId(null);
+    setSelectedPointIds([]);
     setError(null);
     setStatus("idle");
     setStatusMessage(null);
@@ -350,7 +351,7 @@ export function EmbeddingPlayground() {
       reductionMethod: null,
     }));
 
-    setSelectedPointId(null);
+    setSelectedPointIds([]);
     setError(null);
     setStatus("idle");
     setStatusMessage(null);
@@ -374,7 +375,7 @@ export function EmbeddingPlayground() {
       activeExperimentId: experimentId,
     }));
 
-    setSelectedPointId(null);
+    setSelectedPointIds([]);
     setError(null);
     setStatus("idle");
     setStatusMessage(null);
@@ -384,161 +385,21 @@ export function EmbeddingPlayground() {
     () => parseInputPhrases(activeInput),
     [activeInput],
   );
+  const handlePointSelect = useCallback((pointId: string) => {
+    setSelectedPointIds((current) => {
+      const isAlreadySelected = current.includes(pointId);
 
-  const selectedPoint = useMemo(
-    () => activePoints.find((point) => point.id === selectedPointId) ?? null,
-    [activePoints, selectedPointId],
-  );
-
-  const selectedPointIndex = useMemo(
-    () =>
-      selectedPoint
-        ? activePoints.findIndex((point) => point.id === selectedPoint.id)
-        : -1,
-    [activePoints, selectedPoint],
-  );
-
-  const selectedPointNeighbors = useMemo(() => {
-    if (
-      !activeExperiment ||
-      !activeExperiment.embeddings ||
-      selectedPointIndex < 0
-    ) {
-      return [];
-    }
-
-    const target = activeExperiment.embeddings[selectedPointIndex];
-    const neighbors: {
-      index: number;
-      label: string;
-      cosine: number;
-      distance: number;
-    }[] = [];
-
-    const count = Math.min(
-      activeExperiment.points.length,
-      activeExperiment.embeddings.length,
-    );
-
-    for (let index = 0; index < count; index += 1) {
-      if (index === selectedPointIndex) {
-        continue;
+      if (isAlreadySelected) {
+        return current.filter((id) => id !== pointId);
       }
 
-      const candidateVector = activeExperiment.embeddings[index];
-
-      try {
-        const cosine = cosineSimilarity(target, candidateVector);
-        const distance = euclideanDistance(target, candidateVector);
-        const label =
-          activeExperiment.points[index]?.label ?? `Item ${index + 1}`;
-
-        neighbors.push({
-          index,
-          label,
-          cosine,
-          distance,
-        });
-      } catch {
-        // Ignore invalid vectors; they should be rare.
-      }
-    }
-
-    neighbors.sort((a, b) => b.cosine - a.cosine);
-
-    return neighbors.slice(0, 5);
-  }, [activeExperiment, selectedPointIndex]);
-
-  const handleToggleManipulationMode = useCallback(() => {
-    setManipulationMode((current) => !current);
-    setSelectedPointId(null);
-  }, []);
-
-  const handlePointSelect = useCallback(
-    (pointId: string | null) => {
-      if (!manipulationMode) {
-        return;
+      if (current.length >= MAX_SELECTED_POINTS) {
+        return current;
       }
 
-      setSelectedPointId(pointId);
-    },
-    [manipulationMode],
-  );
-
-  const handleNudgeSelectedPoint = useCallback(
-    (axis: 0 | 1 | 2, delta: number) => {
-      if (!selectedPointId) {
-        return;
-      }
-
-      handleActiveExperimentChange((experiment) => {
-        const index = experiment.points.findIndex(
-          (point) => point.id === selectedPointId,
-        );
-
-        if (index === -1) {
-          return experiment;
-        }
-
-        const nextPoints = experiment.points.map((point, pointIndex) => {
-          if (pointIndex !== index) {
-            return point;
-          }
-
-          const nextPosition =
-            [...point.position] as [number, number, number];
-          nextPosition[axis] = nextPosition[axis] + delta;
-
-          return {
-            ...point,
-            position: nextPosition,
-          };
-        });
-
-        return {
-          ...experiment,
-          points: nextPoints,
-        };
-      });
-    },
-    [handleActiveExperimentChange, selectedPointId],
-  );
-
-  const handleResetSelectedPointPosition = useCallback(() => {
-    if (!selectedPointId) {
-      return;
-    }
-
-    handleActiveExperimentChange((experiment) => {
-      const index = experiment.points.findIndex(
-        (point) => point.id === selectedPointId,
-      );
-
-      if (index === -1 || index >= experiment.originalPoints.length) {
-        return experiment;
-      }
-
-      const original = experiment.originalPoints[index];
-
-      const nextPoints = experiment.points.map((point, pointIndex) =>
-        pointIndex === index
-          ? {
-              ...point,
-              position: [...original.position] as [
-                number,
-                number,
-                number,
-              ],
-            }
-          : point,
-      );
-
-      return {
-        ...experiment,
-        points: nextPoints,
-      };
+      return [...current, pointId];
     });
-  }, [handleActiveExperimentChange, selectedPointId]);
+  }, []);
 
   const handlePointLabelChange = useCallback(
     (pointId: string, label: string) => {
@@ -588,22 +449,17 @@ export function EmbeddingPlayground() {
 
       <EmbeddingPlaygroundSceneSection
         points={activePoints}
-        manipulationMode={manipulationMode}
         hasPoints={hasPoints}
-        selectedPointId={selectedPointId}
-        onToggleManipulationMode={handleToggleManipulationMode}
+        selectedPointIds={selectedPointIds}
         onPointSelect={handlePointSelect}
+        maxSelectedPoints={MAX_SELECTED_POINTS}
       />
 
       <EmbeddingPlaygroundManipulationPanel
-        manipulationMode={manipulationMode}
         hasPoints={hasPoints}
         activeExperiment={activeExperiment}
-        selectedPointIndex={selectedPointIndex}
-        selectedPoint={selectedPoint}
-        selectedPointNeighbors={selectedPointNeighbors}
-        onNudgeSelectedPoint={handleNudgeSelectedPoint}
-        onResetSelectedPointPosition={handleResetSelectedPointPosition}
+        selectedPointIds={selectedPointIds}
+        maxSelectedPoints={MAX_SELECTED_POINTS}
       />
 
       <EmbeddingPlaygroundInputsAndLabels
