@@ -13,7 +13,7 @@ export function VocabularySection({
 }: VocabularySectionProps) {
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="space-y-0.5">
           <p className="text-[11px] font-medium text-zinc-100">
             Vocabulary to search over
@@ -26,7 +26,7 @@ export function VocabularySection({
         <button
           type="button"
           onClick={onLoadFromPlayground}
-          className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] text-zinc-200 shadow-sm transition hover:border-zinc-600 hover:bg-zinc-900"
+          className="sm:ml-auto rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] text-zinc-200 shadow-sm transition hover:border-zinc-600 hover:bg-zinc-900"
         >
           Use playground inputs
         </button>

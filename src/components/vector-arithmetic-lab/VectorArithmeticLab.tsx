@@ -549,27 +549,27 @@ export function VectorArithmeticLab() {
 
       <form onSubmit={handleRunExperiment} className="space-y-4">
         <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)]">
-        <EquationSection
-          terms={terms}
-          equationPreview={equationPreview}
-          onTermWeightChange={handleTermWeightChange}
-          onTermTokenChange={handleTermTokenChange}
-          onAddTerm={handleAddTerm}
-          onRemoveTerm={handleRemoveTerm}
-        />
+          <EquationSection
+            terms={terms}
+            equationPreview={equationPreview}
+            onTermWeightChange={handleTermWeightChange}
+            onTermTokenChange={handleTermTokenChange}
+            onAddTerm={handleAddTerm}
+            onRemoveTerm={handleRemoveTerm}
+          />
 
-        <div className="flex flex-col gap-3">
-          <VocabularySection
-            value={vocabularyInput}
-            onChange={handleVocabularyChange}
-            onLoadFromPlayground={handleLoadFromPlayground}
-          />
-          <PredictionSection
-            value={prediction}
-            onChange={handlePredictionChange}
-          />
+          <div className="flex flex-col gap-4">
+            <VocabularySection
+              value={vocabularyInput}
+              onChange={handleVocabularyChange}
+              onLoadFromPlayground={handleLoadFromPlayground}
+            />
+            <PredictionSection
+              value={prediction}
+              onChange={handlePredictionChange}
+            />
+          </div>
         </div>
-      </div>
 
         <RunSection
           statusMessage={statusMessage}
