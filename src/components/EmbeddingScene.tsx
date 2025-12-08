@@ -18,8 +18,8 @@ export type EmbeddingSceneProps = {
   defaultPointColor?: string;
   highlightColor?: string;
   emptyState?: ReactNode;
-  selectedPointId?: string | null;
-  onPointSelect?: (pointId: string | null) => void;
+  selectedPointIds?: string[];
+  onPointSelect?: (pointId: string) => void;
 };
 
 const LABEL_VERTICAL_OFFSET = 4; // multiplier for pointSize
@@ -138,8 +138,8 @@ type EmbeddingSceneInnerProps = {
   pointSize: number;
   defaultPointColor: string;
   highlightColor: string;
-  selectedPointId: string | null;
-  onPointSelect?: (pointId: string | null) => void;
+  selectedPointIds: string[];
+  onPointSelect?: (pointId: string) => void;
 };
 
 function getLabelStyle(
@@ -163,7 +163,7 @@ function EmbeddingSceneInner({
   pointSize,
   defaultPointColor,
   highlightColor,
-  selectedPointId,
+  selectedPointIds,
   onPointSelect,
 }: EmbeddingSceneInnerProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -177,7 +177,7 @@ function EmbeddingSceneInner({
       return;
     }
 
-    onPointSelect(selectedPointId === pointId ? null : pointId);
+    onPointSelect(pointId);
   };
 
   return (
@@ -186,7 +186,7 @@ function EmbeddingSceneInner({
       <directionalLight position={[4, 4, 2]} intensity={0.8} />
       {points.map((point) => {
         const isHighlighted =
-          hoveredId === point.id || selectedPointId === point.id;
+          hoveredId === point.id || selectedPointIds.includes(point.id);
 
         return (
           <group key={point.id} position={point.position}>
@@ -230,7 +230,7 @@ export function EmbeddingScene({
   defaultPointColor = "#e5e7eb",
   highlightColor = "#facc15",
   emptyState,
-  selectedPointId = null,
+  selectedPointIds = [],
   onPointSelect,
 }: EmbeddingSceneProps) {
   const { center, radius } = useMemo(() => computeBounds(points), [points]);
@@ -259,7 +259,7 @@ export function EmbeddingScene({
               pointSize={pointSize}
               defaultPointColor={defaultPointColor}
               highlightColor={highlightColor}
-              selectedPointId={selectedPointId}
+              selectedPointIds={selectedPointIds}
               onPointSelect={onPointSelect}
             />
           </group>

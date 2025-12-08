@@ -1,126 +1,238 @@
 import { formatNumber } from "@/components/EmbeddingPlaygroundState";
 import type { Experiment } from "@/components/EmbeddingPlaygroundState";
-import type { EmbeddingPoint } from "@/components/EmbeddingScene";
-
-type Neighbor = {
-  index: number;
-  label: string;
-  cosine: number;
-  distance: number;
-};
+import { cosineSimilarity, euclideanDistance } from "@/lib/vectors";
 
 type EmbeddingPlaygroundManipulationPanelProps = {
-  manipulationMode: boolean;
   hasPoints: boolean;
   activeExperiment: Experiment | null;
-  selectedPointIndex: number;
-  selectedPoint: EmbeddingPoint | null;
-  selectedPointNeighbors: Neighbor[];
-  onNudgeSelectedPoint: (axis: 0 | 1 | 2, delta: number) => void;
-  onResetSelectedPointPosition: () => void;
+  selectedPointIds: string[];
+  maxSelectedPoints: number;
+};
+
+type SelectedPointForSimilarity = {
+  id: string;
+  index: number;
+  label: string;
+  vector: number[];
+};
+
+type PairRow = {
+  leftIndex: number;
+  rightIndex: number;
+  leftLabel: string;
+  rightLabel: string;
+  cosine: number | null;
+  distance: number | null;
 };
 
 export function EmbeddingPlaygroundManipulationPanel({
-  manipulationMode,
   hasPoints,
   activeExperiment,
-  selectedPointIndex,
-  selectedPoint,
-  selectedPointNeighbors,
-  onNudgeSelectedPoint,
-  onResetSelectedPointPosition,
+  selectedPointIds,
+  maxSelectedPoints,
 }: EmbeddingPlaygroundManipulationPanelProps) {
-  if (!manipulationMode || !hasPoints) {
+  if (!hasPoints) {
     return null;
   }
 
+  const selectedCount = selectedPointIds.length;
+  const points = activeExperiment?.points ?? [];
+  const embeddings = activeExperiment?.embeddings ?? null;
+
+  const hasEmbeddings =
+    Array.isArray(embeddings) && embeddings.length > 0;
+
+  const embeddingsMatchPoints =
+    !!hasEmbeddings && embeddings!.length === points.length;
+
+  const hasAtLeastTwoSelected = selectedCount >= 2;
+
+  const shouldExplainMissingEmbeddings =
+    hasAtLeastTwoSelected &&
+    !!activeExperiment &&
+    (!embeddings || embeddings.length === 0);
+
+  const shouldExplainMismatch =
+    hasAtLeastTwoSelected &&
+    !!activeExperiment &&
+    !!embeddings &&
+    embeddings.length > 0 &&
+    embeddings.length !== points.length;
+
+  let selectedPointsForSimilarity: SelectedPointForSimilarity[] = [];
+
+  if (
+    hasAtLeastTwoSelected &&
+    activeExperiment &&
+    hasEmbeddings &&
+    embeddingsMatchPoints
+  ) {
+    selectedPointsForSimilarity = selectedPointIds
+      .map((pointId) => {
+        const index = points.findIndex((point) => point.id === pointId);
+
+        if (index === -1 || index >= embeddings!.length) {
+          return null;
+        }
+
+        const vector = embeddings![index];
+
+        if (!Array.isArray(vector)) {
+          return null;
+        }
+
+        return {
+          id: pointId,
+          index,
+          label: points[index]?.label ?? `Item ${index + 1}`,
+          vector,
+        } satisfies SelectedPointForSimilarity;
+      })
+      .filter(
+        (value): value is SelectedPointForSimilarity => value !== null,
+      );
+  }
+
+  const canComputeSimilarity =
+    selectedPointsForSimilarity.length >= 2 &&
+    !!activeExperiment &&
+    hasEmbeddings &&
+    embeddingsMatchPoints;
+
+  const pairRows: PairRow[] = [];
+
+  if (canComputeSimilarity) {
+    for (
+      let left = 0;
+      left < selectedPointsForSimilarity.length;
+      left += 1
+    ) {
+      for (
+        let right = left + 1;
+        right < selectedPointsForSimilarity.length;
+        right += 1
+      ) {
+        const leftPoint = selectedPointsForSimilarity[left];
+        const rightPoint = selectedPointsForSimilarity[right];
+
+        let cosine: number | null = null;
+        let distance: number | null = null;
+
+        try {
+          cosine = cosineSimilarity(leftPoint.vector, rightPoint.vector);
+          distance = euclideanDistance(leftPoint.vector, rightPoint.vector);
+        } catch {
+          // Ignore invalid vector pairs; they will render with placeholders.
+        }
+
+        pairRows.push({
+          leftIndex: leftPoint.index,
+          rightIndex: rightPoint.index,
+          leftLabel: leftPoint.label,
+          rightLabel: rightPoint.label,
+          cosine,
+          distance,
+        });
+      }
+    }
+
+    pairRows.sort((a, b) => {
+      const aCosine = a.cosine;
+      const bCosine = b.cosine;
+
+      if (aCosine == null && bCosine == null) return 0;
+      if (aCosine == null) return 1;
+      if (bCosine == null) return -1;
+
+      return bCosine - aCosine;
+    });
+  }
+
+  const hasPairwiseSimilarity = canComputeSimilarity && pairRows.length > 0;
+  const firstPair = hasPairwiseSimilarity ? pairRows[0] : null;
+
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
-      <h2 className="mb-2 font-medium text-zinc-100">Manipulation tools</h2>
-      {!activeExperiment?.embeddings || selectedPointIndex < 0 ? (
-        <p className="text-[11px] text-zinc-400">
-          Select a point in the scene to inspect its coordinates and nearest
-          neighbors.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-[11px] text-zinc-400">
-                Selected point{" "}
-                <span className="font-mono text-zinc-200">
-                  #{selectedPointIndex + 1}
-                </span>
-              </p>
-              <p className="text-[11px] text-zinc-300">
-                Label:{" "}
-                <span className="font-mono text-zinc-100">
-                  {selectedPoint?.label ?? `Item ${selectedPointIndex + 1}`}
-                </span>
-              </p>
-              <p className="text-[11px] text-zinc-400">
-                Coordinates:{" "}
-                <span className="font-mono text-xs text-zinc-100">
-                  {selectedPoint?.position
-                    .map((value) => value.toFixed(3))
-                    .join(", ")}
-                </span>
-              </p>
-            </div>
-            <div className="flex flex-col items-start gap-1 text-[11px]">
-              <span className="text-zinc-400">Nudge along axes</span>
-              <div className="flex flex-wrap gap-2">
-                {(["x", "y", "z"] as const).map((axisLabel, axisIndex) => (
-                  <div
-                    key={axisLabel}
-                    className="flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1"
-                  >
-                    <span className="w-3 text-center text-[10px] uppercase text-zinc-500">
-                      {axisLabel}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onNudgeSelectedPoint(axisIndex as 0 | 1 | 2, -0.2)
-                      }
-                      className="h-6 w-6 rounded border border-zinc-700 text-[10px] text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
-                    >
-                      −
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onNudgeSelectedPoint(axisIndex as 0 | 1 | 2, 0.2)
-                      }
-                      className="h-6 w-6 rounded border border-zinc-700 text-[10px] text-zinc-200 hover:border-zinc-500 hover:bg-zinc-900"
-                    >
-                      +
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={onResetSelectedPointPosition}
-                className="mt-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900"
-              >
-                Reset point position
-              </button>
-            </div>
-          </div>
+      <h2 className="mb-2 font-medium text-zinc-100">
+        Selected points similarity
+      </h2>
+      <p className="mb-2 text-[11px] text-zinc-400">
+        Click points in the 3D scene to select or deselect them. Similarity
+        is always computed from the full embeddings, not the 3D coordinates.
+      </p>
 
-          {selectedPointNeighbors.length > 0 && (
+      {selectedCount === 0 && (
+        <p className="text-[11px] text-zinc-400">
+          Select up to {maxSelectedPoints} points in the scene to compare
+          their cosine similarity.
+        </p>
+      )}
+
+      {selectedCount === 1 && (
+        <p className="text-[11px] text-zinc-400">
+          Select at least two points to see cosine similarity in the
+          original embedding space.
+        </p>
+      )}
+
+      {shouldExplainMissingEmbeddings && (
+        <p className="text-[11px] text-zinc-400">
+          Embeddings are missing for this experiment. Generate embeddings
+          again before inspecting similarity.
+        </p>
+      )}
+
+      {shouldExplainMismatch && (
+        <p className="text-[11px] text-zinc-400">
+          Saved embeddings do not match the current set of points, so
+          similarity cannot be computed reliably for the selected points.
+        </p>
+      )}
+
+      {hasPairwiseSimilarity && (
+        <div className="mt-3 space-y-3">
+          {selectedPointsForSimilarity.length === 2 && firstPair && (
+            <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+              <p className="mb-1 text-[11px] text-zinc-400">
+                Exactly two points selected:
+              </p>
+              <p className="mb-1 text-[11px] text-zinc-300">
+                <span className="font-mono text-zinc-100">
+                  #{firstPair.leftIndex + 1} {firstPair.leftLabel}
+                </span>{" "}
+                and{" "}
+                <span className="font-mono text-zinc-100">
+                  #{firstPair.rightIndex + 1} {firstPair.rightLabel}
+                </span>
+              </p>
+              <p className="text-[11px] text-zinc-400">
+                Cosine similarity:{" "}
+                <span className="font-mono text-zinc-200">
+                  {formatNumber(firstPair.cosine)}
+                </span>{" "}
+                / Distance:{" "}
+                <span className="font-mono text-zinc-200">
+                  {formatNumber(firstPair.distance)}
+                </span>
+              </p>
+            </div>
+          )}
+
+          {selectedPointsForSimilarity.length >= 3 && (
             <div className="space-y-2">
               <p className="text-[11px] text-zinc-400">
-                Nearest neighbors by cosine similarity (within this
-                experiment):
+                Pairwise cosine similarity for the selected points:
               </p>
               <div className="overflow-x-auto">
                 <table className="min-w-full table-fixed border-separate border-spacing-y-1 text-[11px]">
                   <thead className="text-zinc-400">
                     <tr>
-                      <th className="w-12 px-2 text-left font-normal">#</th>
-                      <th className="px-2 text-left font-normal">Label</th>
+                      <th className="w-20 px-2 text-left font-normal">
+                        Pair
+                      </th>
+                      <th className="px-2 text-left font-normal">
+                        Labels
+                      </th>
                       <th className="w-24 px-2 text-right font-normal">
                         Cosine
                       </th>
@@ -130,22 +242,28 @@ export function EmbeddingPlaygroundManipulationPanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedPointNeighbors.map((neighbor) => (
+                    {pairRows.map((row) => (
                       <tr
-                        key={neighbor.index}
+                        key={`${row.leftIndex}-${row.rightIndex}`}
                         className="rounded-md border border-zinc-800 bg-zinc-950"
                       >
                         <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-500">
-                          {neighbor.index + 1}
+                          #{row.leftIndex + 1} - #{row.rightIndex + 1}
                         </td>
-                        <td className="truncate px-2 py-1 text-zinc-200">
-                          {neighbor.label}
+                        <td className="px-2 py-1 text-[11px] text-zinc-200">
+                          <span className="font-mono text-[10px] text-zinc-300">
+                            {row.leftLabel}
+                          </span>{" "}
+                          vs{" "}
+                          <span className="font-mono text-[10px] text-zinc-300">
+                            {row.rightLabel}
+                          </span>
                         </td>
                         <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-300">
-                          {formatNumber(neighbor.cosine)}
+                          {formatNumber(row.cosine)}
                         </td>
                         <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-300">
-                          {formatNumber(neighbor.distance)}
+                          {formatNumber(row.distance)}
                         </td>
                       </tr>
                     ))}
