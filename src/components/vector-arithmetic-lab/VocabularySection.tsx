@@ -35,7 +35,7 @@ export function VocabularySection({
         value={value}
         onChange={onChange}
         rows={6}
-        className="h-full min-h-[120px] w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+        className="min-h-[120px] max-h-48 w-full resize-none overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
       />
     </div>
   );
