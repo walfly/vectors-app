@@ -89,7 +89,7 @@ export function ResultsSection({
 
                   return (
                     <tr
-                      key={neighbor.id + index}
+                      key={neighbor.id}
                       className={[
                         "rounded-md border border-zinc-800 bg-zinc-950",
                         isPredicted
