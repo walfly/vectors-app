@@ -157,8 +157,10 @@ export function EmbeddingPlaygroundManipulationPanel({
         Selected points similarity
       </h2>
       <p className="mb-2 text-[11px] text-zinc-400">
-        Click points in the 3D scene to select or deselect them. Similarity
-        is always computed from the full embeddings, not the 3D coordinates.
+        Click points in the 3D scene to select or deselect them. For the
+        selected points, this panel shows pairwise cosine similarity and
+        Euclidean distance in the full embedding space, not the 3D
+        coordinates.
       </p>
 
       {selectedCount === 0 && (
@@ -170,8 +172,8 @@ export function EmbeddingPlaygroundManipulationPanel({
 
       {selectedCount === 1 && (
         <p className="text-[11px] text-zinc-400">
-          Select at least two points to see cosine similarity in the
-          original embedding space.
+          Select at least two points to see cosine similarity and distance in
+          the original embedding space.
         </p>
       )}
 
@@ -221,7 +223,8 @@ export function EmbeddingPlaygroundManipulationPanel({
           {selectedPointsForSimilarity.length >= 3 && (
             <div className="space-y-2">
               <p className="text-[11px] text-zinc-400">
-                Pairwise cosine similarity for the selected points:
+                Pairwise cosine similarity and distance for the selected
+                points:
               </p>
               <div className="overflow-x-auto">
                 <table className="min-w-full table-fixed border-separate border-spacing-y-1 text-[11px]">
