@@ -4,25 +4,18 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useMemo, useState } from "react";
 
 import {
-  formatNumber,
   loadInitialPlaygroundState,
   parseInputPhrases,
   readErrorMessage,
   type EmbeddingsApiResponse,
-} from "@/components/EmbeddingPlaygroundState";
+} from "@/components/embedding-playground/EmbeddingPlaygroundState";
 
-type EquationTerm = {
-  id: string;
-  token: string;
-  weight: number;
-};
-
-type Neighbor = {
-  id: string;
-  score: number;
-};
-
-type LabStatus = "idle" | "embedding" | "arithmetic" | "nearest";
+import { EquationSection } from "./EquationSection";
+import { PredictionSection } from "./PredictionSection";
+import { ResultsSection } from "./ResultsSection";
+import { RunSection } from "./RunSection";
+import { VocabularySection } from "./VocabularySection";
+import type { EquationTerm, LabStatus, Neighbor } from "./types";
 
 const DEFAULT_EXAMPLE_TERMS: EquationTerm[] = [
   { id: "term-1", token: "king", weight: 1 },
@@ -107,23 +100,6 @@ export function VectorArithmeticLab() {
   );
 
   const isSubmitting = status !== "idle";
-
-  const lastPredictionNormalized = useMemo(
-    () => lastPrediction?.trim().toLowerCase() ?? "",
-    [lastPrediction],
-  );
-
-  const predictionMatchState = useMemo(() => {
-    if (!neighbors || neighbors.length === 0 || !lastPredictionNormalized) {
-      return null;
-    }
-
-    const match = neighbors.some((neighbor) => {
-      return neighbor.id.trim().toLowerCase() === lastPredictionNormalized;
-    });
-
-    return match;
-  }, [neighbors, lastPredictionNormalized]);
 
   const handleTermTokenChange = useCallback(
     (id: string, event: ChangeEvent<HTMLInputElement>) => {
@@ -573,228 +549,39 @@ export function VectorArithmeticLab() {
 
       <form onSubmit={handleRunExperiment} className="space-y-4">
         <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)]">
-          <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="space-y-0.5">
-                <p className="text-[11px] font-medium text-zinc-100">
-                  1. Build a word equation
-                </p>
-                <p className="text-[11px] text-zinc-400">
-                  Each row is a term of the form <code>(weight) token</code>.
-                  Positive weights add a vector; negative weights subtract it.
-                </p>
-              </div>
-            </div>
+        <EquationSection
+          terms={terms}
+          equationPreview={equationPreview}
+          onTermWeightChange={handleTermWeightChange}
+          onTermTokenChange={handleTermTokenChange}
+          onAddTerm={handleAddTerm}
+          onRemoveTerm={handleRemoveTerm}
+        />
 
-            <p className="mb-2 rounded-md bg-zinc-950 px-2 py-1.5 font-mono text-[11px] text-zinc-200">
-              {equationPreview}
-            </p>
-
-            <ul className="space-y-1">
-              {terms.map((term) => (
-                <li
-                  key={term.id}
-                  className="flex items-center gap-2 text-[11px]"
-                >
-                  <input
-                    type="number"
-                    value={term.weight}
-                    onChange={(event) =>
-                      handleTermWeightChange(term.id, event)
-                    }
-                    step={1}
-                    className="w-16 rounded-md border border-zinc-800 bg-zinc-950 px-1.5 py-1 text-right font-mono text-[11px] text-zinc-100 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-                  />
-                  <input
-                    type="text"
-                    value={term.token}
-                    onChange={(event) =>
-                      handleTermTokenChange(term.id, event)
-                    }
-                    placeholder="token (e.g., king)"
-                    className="min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-100 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTerm(term.id)}
-                    className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] text-zinc-300 shadow-sm transition hover:border-zinc-600 hover:bg-zinc-900"
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-              <li className="pt-1">
-                <button
-                  type="button"
-                  onClick={handleAddTerm}
-                  className="rounded-md border border-dashed border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-200 shadow-sm transition hover:border-zinc-500 hover:bg-zinc-900"
-                >
-                  Add term
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="space-y-0.5">
-                  <p className="text-[11px] font-medium text-zinc-100">
-                    Vocabulary to search over
-                  </p>
-                  <p className="text-[11px] text-zinc-400">
-                    These tokens form the candidate set for nearest neighbors.
-                    Use one token per line or comma-separated.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleLoadFromPlayground}
-                  className="rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] text-zinc-200 shadow-sm transition hover:border-zinc-600 hover:bg-zinc-900"
-                >
-                  Use playground inputs
-                </button>
-              </div>
-              <textarea
-                value={vocabularyInput}
-                onChange={handleVocabularyChange}
-                rows={6}
-                className="h-full min-h-[120px] w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-              />
-            </div>
-
-            <div className="rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-              <p className="mb-1 text-[11px] font-medium text-zinc-100">
-                2. Predict the result
-              </p>
-              <p className="mb-2 text-[11px] text-zinc-400">
-                Before we reveal the neighbors, make a guess about which token
-                should end up closest to the result vector.
-              </p>
-              <input
-                type="text"
-                value={prediction}
-                onChange={handlePredictionChange}
-                placeholder="e.g., queen"
-                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-              />
-            </div>
-          </div>
+        <div className="flex flex-col gap-3">
+          <VocabularySection
+            value={vocabularyInput}
+            onChange={handleVocabularyChange}
+            onLoadFromPlayground={handleLoadFromPlayground}
+          />
+          <PredictionSection
+            value={prediction}
+            onChange={handlePredictionChange}
+          />
         </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1 text-[11px] text-zinc-400">
-            <p>
-              3. Run the lab to compute the weighted sum and search for the
-              nearest neighbors in your vocabulary.
-            </p>
-            {statusMessage && <p>{statusMessage}</p>}
-            {error && (
-              <p className="font-medium text-red-400">
-                {error}
-              </p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSubmitting ? "Running experiment..." : "Run experiment"}
-          </button>
-        </div>
-      </form>
-
-      <div className="mt-4 rounded-md border border-zinc-800 bg-zinc-950/60 p-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-          <p className="font-medium text-zinc-100">Results and neighbors</p>
-          {lastEquationTokens && lastEquationTokens.length > 0 && (
-            <p className="text-zinc-400">
-              Last equation:{" "}
-              <span className="font-mono text-zinc-200">
-                {lastEquationTokens.join("  ⟶  ")}
-              </span>
-            </p>
-          )}
-        </div>
-
-        {!neighbors || neighbors.length === 0 ? (
-          <p className="text-[11px] text-zinc-400">
-            Run an experiment above to see the top neighbors ranked by cosine
-            similarity to the resulting vector.
-          </p>
-        ) : (
-          <div className="space-y-2 text-[11px]">
-            {predictionMatchState === true && lastPrediction && (
-              <p className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                Your prediction <span className="font-mono">{lastPrediction}</span>
-                {" "}
-                appeared in the top {neighbors.length} neighbors.
-              </p>
-            )}
-            {predictionMatchState === false && lastPrediction && (
-              <p className="rounded-md border border-amber-500/60 bg-amber-500/10 px-2 py-1 text-amber-200">
-                Your prediction <span className="font-mono">{lastPrediction}</span>
-                {" "}
-                did not appear in the top {neighbors.length} neighbors. This is
-                a great example of where vector arithmetic can fail or behave
-                unexpectedly.
-              </p>
-            )}
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full table-fixed border-separate border-spacing-y-1 text-[11px]">
-                <thead className="text-zinc-400">
-                  <tr>
-                    <th className="w-12 px-2 text-left font-normal">#</th>
-                    <th className="px-2 text-left font-normal">Token</th>
-                    <th className="w-32 px-2 text-right font-normal">
-                      Cosine similarity
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {neighbors.map((neighbor, index) => {
-                    const isPredicted =
-                      lastPredictionNormalized &&
-                      neighbor.id.trim().toLowerCase() ===
-                        lastPredictionNormalized;
-
-                    return (
-                      <tr
-                        key={neighbor.id + index}
-                        className={[
-                          "rounded-md border border-zinc-800 bg-zinc-950",
-                          isPredicted
-                            ? "border-emerald-500/80 bg-emerald-500/10"
-                            : "",
-                        ].join(" ")}
-                      >
-                        <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-500">
-                          {index + 1}
-                        </td>
-                        <td className="truncate px-2 py-1 text-zinc-200">
-                          {neighbor.id}
-                        </td>
-                        <td className="px-2 py-1 text-right font-mono text-[10px] text-zinc-300">
-                          {formatNumber(neighbor.score)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <p className="text-[11px] text-zinc-400">
-              Try tweaking the equation coefficients, swapping tokens, or
-              changing the vocabulary list to see when analogies work well and
-              when they break down.
-            </p>
-          </div>
-        )}
       </div>
+
+        <RunSection
+          statusMessage={statusMessage}
+          error={error}
+          isSubmitting={isSubmitting}
+        />
+      </form>
+      <ResultsSection
+        neighbors={neighbors}
+        lastEquationTokens={lastEquationTokens}
+        lastPrediction={lastPrediction}
+      />
     </section>
   );
 }

@@ -1,5 +1,5 @@
-import { EmbeddingPlayground } from "@/components/EmbeddingPlayground";
-import { VectorArithmeticLab } from "@/components/VectorArithmeticLab";
+import { EmbeddingPlayground } from "@/components/embedding-playground/EmbeddingPlayground";
+import { VectorArithmeticLab } from "@/components/vector-arithmetic-lab/VectorArithmeticLab";
 
 export default function Home() {
   return (

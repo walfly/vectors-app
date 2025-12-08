@@ -1,5 +1,5 @@
 import { cosineSimilarity } from "@/lib/vectors";
-import type { EmbeddingPoint } from "@/components/EmbeddingScene";
+import type { EmbeddingPoint } from "./EmbeddingScene";
 
 export type EmbeddingsApiResponse = {
   model: string;

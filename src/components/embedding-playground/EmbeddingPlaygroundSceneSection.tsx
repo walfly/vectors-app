@@ -1,5 +1,5 @@
-import { EmbeddingScene } from "@/components/EmbeddingScene";
-import type { EmbeddingPoint } from "@/components/EmbeddingScene";
+import { EmbeddingScene } from "./EmbeddingScene";
+import type { EmbeddingPoint } from "./EmbeddingScene";
 
 type EmbeddingPlaygroundSceneSectionProps = {
   points: EmbeddingPoint[];
