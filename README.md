@@ -1,60 +1,248 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VectorVerse: Embedding Playground
 
-## Getting Started
+Interactive playground for building intuition about vector embeddings and
+high-dimensional geometry. The UI is a Next.js app, backed by a separate
+TypeScript embeddings server that hosts the Hugging Face model.
 
-This project uses **pnpm** as the recommended package manager.
+For product context and long-form design details, see [`prd.md`](./prd.md).
 
-Install dependencies:
+---
+
+## Architecture overview
+
+This repo contains **two TypeScript services**:
+
+- **Next.js app (Vercel)** – User-facing UI and lightweight API routes under
+  `src/app/api`. These routes handle vector math, dimensionality reduction, and
+  proxy HTTP requests to the embeddings server.
+- **Embeddings server (Render or similar)** – Standalone Node/Express service
+  in `embeddings-server/` that loads the embeddings model via
+  `@huggingface/transformers`, runs inference, and optionally caches results in
+  Redis.
+
+The Next app talks to the embeddings server over HTTP using the
+`EMBEDDINGS_SERVER_URL` environment variable. All heavy ML dependencies live in
+the embeddings server, keeping the Vercel deployment lean.
+
+---
+
+## Requirements
+
+- **Node.js**: >= 20.9.0 (matches the `next@16.0.7` engine requirement)
+- **pnpm**: >= 10 (repo is developed with `pnpm@10.24.0`)
+
+Using older Node or pnpm versions may cause install or runtime issues,
+especially for the embeddings server dependencies.
+
+---
+
+## Local development
+
+This project uses **pnpm** as the package manager for both services.
+
+### 1. Install dependencies
+
+Clone the repo, then install deps for the Next app:
 
 ```bash
 pnpm install
 ```
 
-Run the development server:
+Install deps for the embeddings server:
+
+```bash
+cd embeddings-server
+pnpm install
+```
+
+### 2. Start the embeddings server
+
+From `embeddings-server/`:
+
+```bash
+cd embeddings-server
+pnpm build
+pnpm start
+```
+
+By default the server listens on `http://localhost:4000` and exposes:
+
+- `POST /api/embeddings` – generate embeddings for an array of input strings
+- `GET  /api/warm` – trigger model warm-up and report status
+- `GET  /api/health` – embeddings model health summary
+
+The first run will download the model and may take a little while to warm up.
+
+### 3. Configure the Next app to talk to the embeddings server
+
+In the repo root, create `.env.local` with at least:
+
+```bash
+EMBEDDINGS_SERVER_URL=http://localhost:4000
+```
+
+This URL must point at a running instance of the embeddings server (local or
+remote). In production, this will typically be the Render service URL.
+
+### 4. Run the Next dev server
+
+From the repo root:
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000) to use the
+Embedding Playground.
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+---
 
 ## Project structure
 
-The app is built with the Next.js App Router using a `src/` directory and TypeScript in strict mode. Key folders:
+High-level layout:
 
 ```text
-src/
-├── app/
-│   ├── api/
-│   │   └── embeddings/        # Route handler lives here
-│   ├── layout.tsx
-│   └── page.tsx
-├── components/
-├── lib/
-│   ├── embeddings/
-│   ├── vectors/
-│   └── utils/
-├── hooks/
-└── types/
+.
+├── embeddings-server/            # Standalone Node/Express embeddings service
+│   ├── src/
+│   │   ├── lib/embeddings/       # Model lifecycle + status helpers
+│   │   └── server.ts             # HTTP API (embeddings, warm, health)
+│   └── tsconfig.json
+├── src/                          # Next.js app (App Router)
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── embeddings/       # Proxies to embeddings server
+│   │   │   ├── reduce/           # Dimensionality reduction (PCA/UMAP)
+│   │   │   ├── similarity/       # Pairwise similarity/distance matrix
+│   │   │   ├── nearest/          # Nearest-neighbor search
+│   │   │   ├── arithmetic/       # Vector arithmetic + nearest neighbors
+│   │   │   ├── health/           # Combined app + embeddings health
+│   │   │   └── warm/             # Proxy warm-up endpoint
+│   │   ├── layout.tsx
+│   │   └── page.tsx              # Embedding Playground UI
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   │   ├── embeddings/           # Client utilities for calling API routes
+│   │   ├── vectors/              # Vector math + reduction helpers
+│   │   └── utils/                # Shared helpers (e.g., error responses)
+│   └── types/
+├── prd.md                        # Detailed product requirements & design
+└── vercel.json                   # Vercel build configuration
 ```
 
-Path aliases are configured so imports like `@/components/...`, `@/lib/...`, and `@/types/...` resolve to the corresponding folders under `src/`.
+Path aliases are configured so imports like `@/components/...`, `@/lib/...`,
+and `@/types/...` resolve to the corresponding folders under `src/`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Environment variables
 
-To learn more about Next.js, take a look at the following resources:
+### Next.js app
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Set these in Vercel (or `.env.local` for local dev):
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Minimal config:** `EMBEDDINGS_SERVER_URL` must be set for the app to call
+  the embeddings server.
 
-## Deploy on Vercel
+- `EMBEDDINGS_SERVER_URL` **(required)** – Base URL of the embeddings server
+  (trailing slash is fine; it will be trimmed), for example:
+  - `http://localhost:4000`
+  - `https://your-embeddings-service.onrender.com`
+- `KV_REST_API_URL`, `VERCEL_KV_REST_API_URL`, or `KV_URL` *(optional)* – If
+  configured, `/api/health` will report `kvAvailable: true`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Embeddings server
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set these wherever the embeddings server runs (Render, local Docker, etc.):
+
+- **Minimal config:** `PORT` may be provided by the platform; otherwise the
+  server defaults to `4000`. Redis-related variables are optional.
+
+- `PORT` *(optional, default `4000`)* – HTTP port for the embeddings server.
+- `REDIS_URL` *(optional but recommended)* – Redis connection string used for
+  caching embeddings. If omitted, the server still works but disables cache
+  reads/writes.
+- `EMBEDDINGS_CACHE_TTL_SECONDS` *(optional)* – TTL for cached embeddings in
+  seconds. When unset, entries default to a 24-hour TTL. If set to a
+  non-positive or non-numeric value, no TTL is applied and entries persist
+  until evicted by Redis.
+
+---
+
+## API overview
+
+All external callers should use the Next.js routes; the embeddings server is an
+internal dependency.
+
+**Next.js API routes (`/api/*`):**
+
+- `POST /api/embeddings` – Proxy to embeddings server; accepts a JSON body with
+  an `inputs` array of strings.
+- `POST /api/reduce` – Reduce high-dimensional vectors to 2D/3D via PCA or
+  UMAP.
+- `POST /api/similarity` – Compute pairwise similarity/distance matrix between
+  vectors.
+- `POST /api/nearest` – Brute-force nearest-neighbor search over labeled
+  candidate vectors.
+- `POST /api/arithmetic` – Perform weighted vector arithmetic and (optionally)
+  return nearest neighbors to the result.
+- `GET  /api/health` – Combined health check (embeddings model + KV
+  availability).
+- `GET  /api/warm` – Proxy warm-up endpoint that triggers embeddings model
+  initialization.
+
+**Embeddings server API (`${EMBEDDINGS_SERVER_URL}/api/*`):**
+
+- `POST /api/embeddings` – Run the embeddings model and return normalized
+  vectors plus metadata.
+- `GET  /api/warm` – Ensure the model is initialized and report status.
+- `GET  /api/health` – Report embeddings model health only (no KV checks).
+
+---
+
+## Scripts
+
+From the repo root (Next.js app):
+
+```bash
+pnpm dev     # Start Next.js dev server on http://localhost:3000
+pnpm build   # Production build
+pnpm start   # Start production server (after pnpm build)
+pnpm lint    # Run ESLint
+pnpm test    # Run Vitest tests for the Next app
+```
+
+From `embeddings-server/`:
+
+```bash
+pnpm build   # Compile TypeScript to dist/
+pnpm start   # Start the embeddings server
+pnpm test    # Run Vitest tests for the embeddings pipeline
+```
+
+---
+
+## Deployment
+
+- **Next.js app** – Deploy to Vercel using the default Next.js settings. Set
+  `EMBEDDINGS_SERVER_URL` in the Vercel project environment to point at the
+  embeddings server.
+- **Embeddings server** – Deploy to Render or any Node host that supports
+  long-lived services. Provide `REDIS_URL` for caching and configure `PORT` as
+  required by the platform.
+
+Once deployed, the Next app will proxy all embedding requests through the
+configured embeddings server, keeping the UI responsive while heavy model
+inference happens off the Vercel edge runtime.
+
+### Production deployment checklist
+
+1. **Deploy the embeddings server** to Render (or similar) and confirm
+   `GET ${EMBEDDINGS_SERVER_URL}/api/health` reports a healthy status.
+2. **Configure Vercel environment:** set `EMBEDDINGS_SERVER_URL` to the
+   embeddings server URL (including protocol, e.g., `https://...`).
+3. **Deploy the Next.js app** to Vercel.
+4. **Verify health:** call the Next app's `GET /api/health` endpoint and check
+   that both the embeddings model status and `kvAvailable` (if configured) look
+   correct before directing users to the UI.
