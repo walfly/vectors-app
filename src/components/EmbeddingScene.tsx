@@ -18,6 +18,8 @@ export type EmbeddingSceneProps = {
   defaultPointColor?: string;
   highlightColor?: string;
   emptyState?: ReactNode;
+  selectedPointId?: string | null;
+  onPointSelect?: (pointId: string | null) => void;
 };
 
 const LABEL_VERTICAL_OFFSET = 4; // multiplier for pointSize
@@ -91,6 +93,7 @@ type EmbeddingPointMeshProps = {
   highlightColor: string;
   isHighlighted: boolean;
   onHoverChange: (pointId: string | null) => void;
+  onClick?: (pointId: string) => void;
 };
 
 function EmbeddingPointMesh({
@@ -100,6 +103,7 @@ function EmbeddingPointMesh({
   highlightColor,
   isHighlighted,
   onHoverChange,
+  onClick,
 }: EmbeddingPointMeshProps) {
   const radius = size * (isHighlighted ? 1.6 : 1);
   const resolvedColor = isHighlighted ? highlightColor : color;
@@ -114,6 +118,14 @@ function EmbeddingPointMesh({
         event.stopPropagation();
         onHoverChange(null);
       }}
+      onClick={(event) => {
+        if (!onClick) {
+          return;
+        }
+
+        event.stopPropagation();
+        onClick(point.id);
+      }}
     >
       <sphereGeometry args={[radius, 16, 16]} />
       <meshStandardMaterial color={resolvedColor} />
@@ -126,6 +138,8 @@ type EmbeddingSceneInnerProps = {
   pointSize: number;
   defaultPointColor: string;
   highlightColor: string;
+  selectedPointId: string | null;
+  onPointSelect?: (pointId: string | null) => void;
 };
 
 function getLabelStyle(
@@ -149,15 +163,30 @@ function EmbeddingSceneInner({
   pointSize,
   defaultPointColor,
   highlightColor,
+  selectedPointId,
+  onPointSelect,
 }: EmbeddingSceneInnerProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  const handleHoverChange = (pointId: string | null) => {
+    setHoveredId(pointId);
+  };
+
+  const handlePointClick = (pointId: string) => {
+    if (!onPointSelect) {
+      return;
+    }
+
+    onPointSelect(selectedPointId === pointId ? null : pointId);
+  };
 
   return (
     <>
       <ambientLight intensity={0.5} />
       <directionalLight position={[4, 4, 2]} intensity={0.8} />
       {points.map((point) => {
-        const isHighlighted = hoveredId === point.id;
+        const isHighlighted =
+          hoveredId === point.id || selectedPointId === point.id;
 
         return (
           <group key={point.id} position={point.position}>
@@ -167,7 +196,8 @@ function EmbeddingSceneInner({
               color={defaultPointColor}
               highlightColor={highlightColor}
               isHighlighted={isHighlighted}
-              onHoverChange={setHoveredId}
+              onHoverChange={handleHoverChange}
+              onClick={onPointSelect ? handlePointClick : undefined}
             />
             {point.label && (
               <Html
@@ -200,6 +230,8 @@ export function EmbeddingScene({
   defaultPointColor = "#e5e7eb",
   highlightColor = "#facc15",
   emptyState,
+  selectedPointId = null,
+  onPointSelect,
 }: EmbeddingSceneProps) {
   const { center, radius } = useMemo(() => computeBounds(points), [points]);
 
@@ -227,6 +259,8 @@ export function EmbeddingScene({
               pointSize={pointSize}
               defaultPointColor={defaultPointColor}
               highlightColor={highlightColor}
+              selectedPointId={selectedPointId}
+              onPointSelect={onPointSelect}
             />
           </group>
           <OrbitControls enableDamping enablePan enableZoom />

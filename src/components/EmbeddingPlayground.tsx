@@ -1,104 +1,172 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useCallback, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { EmbeddingPlaygroundComparisonPanel } from "@/components/EmbeddingPlaygroundComparisonPanel";
+import { EmbeddingPlaygroundExperiments } from "@/components/EmbeddingPlaygroundExperiments";
+import { EmbeddingPlaygroundForm } from "@/components/EmbeddingPlaygroundForm";
+import { EmbeddingPlaygroundInputsAndLabels } from "@/components/EmbeddingPlaygroundInputsAndLabels";
+import { EmbeddingPlaygroundManipulationPanel } from "@/components/EmbeddingPlaygroundManipulationPanel";
+import { EmbeddingPlaygroundSceneSection } from "@/components/EmbeddingPlaygroundSceneSection";
 import {
-  EmbeddingScene,
-  type EmbeddingPoint,
-} from "@/components/EmbeddingScene";
-
-type EmbeddingsApiResponse = {
-  model: string;
-  embeddings: number[][];
-  dimensions: number;
-};
-
-type ReductionApiResponse = {
-  points: number[][];
-  method: "pca" | "umap";
-};
-
-type PlaygroundStatus = "idle" | "embedding" | "reducing";
-
-function parseInputPhrases(raw: string): string[] {
-  const normalized = raw.replace(/\r\n/g, "\n");
-
-  if (normalized.includes("\n")) {
-    return normalized
-      .split("\n")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-  }
-
-  return normalized
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-}
-
-async function readErrorMessage(response: Response): Promise<string> {
-  const fallback = `Request failed with status ${response.status}.`;
-
-  try {
-    const data = (await response.json()) as
-      | {
-          error?: string;
-          details?: string;
-          status?: string;
-          model?: string;
-        }
-      | null;
-
-    if (!data || typeof data.error !== "string") {
-      return fallback;
-    }
-
-    if (data.status === "initializing") {
-      return `${data.error} The embeddings model is still loading; try again in a few seconds.`;
-    }
-
-    if (typeof data.details === "string" && data.details.length > 0) {
-      return `${data.error} (${data.details})`;
-    }
-
-    return data.error;
-  } catch {
-    return fallback;
-  }
-}
-
-function buildEmbeddingPoints(
-  reducedPoints: number[][],
-  labels: string[],
-): EmbeddingPoint[] {
-  return reducedPoints.map((coords, index) => {
-    const [x, y, z = 0] = coords;
-
-    return {
-      id: `point-${index}`,
-      position: [x, y, z],
-      label: labels[index] ?? `Item ${index + 1}`,
-    } satisfies EmbeddingPoint;
-  });
-}
-
-const INITIAL_TEXT = ["king", "queen", "man", "woman"].join("\n");
+  buildEmbeddingPoints,
+  createExperiment,
+  EXPERIMENTS_STORAGE_KEY,
+  INITIAL_TEXT,
+  loadInitialPlaygroundState,
+  parseInputPhrases,
+  readErrorMessage,
+  type EmbeddingsApiResponse,
+  type Experiment,
+  type PlaygroundStatus,
+  type ReductionApiResponse,
+  type StoredPlaygroundState,
+} from "@/components/EmbeddingPlaygroundState";
+import { cosineSimilarity, euclideanDistance } from "@/lib/vectors";
 
 export function EmbeddingPlayground() {
-  const [input, setInput] = useState(INITIAL_TEXT);
+  const [playgroundState, setPlaygroundState] = useState<StoredPlaygroundState>(
+    () => loadInitialPlaygroundState(),
+  );
+
   const [status, setStatus] = useState<PlaygroundStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [points, setPoints] = useState<EmbeddingPoint[]>([]);
-  const [lastMethod, setLastMethod] = useState<"pca" | "umap" | null>(null);
-  const [lastModel, setLastModel] = useState<string | null>(null);
+  const [manipulationMode, setManipulationMode] = useState(false);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [primaryComparisonId, setPrimaryComparisonId] =
+    useState<string | null>(null);
+  const [secondaryComparisonId, setSecondaryComparisonId] =
+    useState<string | null>(null);
+  const [comparisonFocusIndex, setComparisonFocusIndex] = useState(0);
+
+  // Persist experiments to localStorage whenever they change.
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        EXPERIMENTS_STORAGE_KEY,
+        JSON.stringify(playgroundState),
+      );
+    } catch {
+      // Ignore storage errors in the playground UI.
+    }
+  }, [playgroundState]);
+
+  const { experiments, activeExperimentId } = playgroundState;
+
+  const activeExperiment = useMemo(
+    () =>
+      experiments.find((experiment) => experiment.id === activeExperimentId) ??
+      experiments[0],
+    [experiments, activeExperimentId],
+  );
+
+  const activeInput = activeExperiment?.input ?? "";
+  const activePoints = useMemo(
+    () => activeExperiment?.points ?? [],
+    [activeExperiment?.points],
+  );
+  const hasPoints = activePoints.length > 0;
+  const isSubmitting = status !== "idle";
+
+  const handleActiveExperimentChange = useCallback(
+    (updater: (experiment: Experiment) => Experiment) => {
+      setPlaygroundState((current) => {
+        const {
+          experiments: currentExperiments,
+          activeExperimentId: currentActiveId,
+        } = current;
+
+        const index = currentExperiments.findIndex(
+          (experiment) => experiment.id === currentActiveId,
+        );
+
+        if (index === -1) {
+          return current;
+        }
+
+        const updated = [...currentExperiments];
+        updated[index] = updater(currentExperiments[index]);
+
+        return {
+          ...current,
+          experiments: updated,
+        };
+      });
+    },
+    [],
+  );
+
+  const handlePhraseEdit = useCallback(
+    (index: number, value: string) => {
+      handleActiveExperimentChange((experiment) => {
+        const phrases = parseInputPhrases(experiment.input);
+
+        if (index < 0 || index >= phrases.length) {
+          return experiment;
+        }
+
+        const nextPhrases = [...phrases];
+        nextPhrases[index] = value;
+
+        return {
+          ...experiment,
+          input: nextPhrases.join("\n"),
+        };
+      });
+    },
+    [handleActiveExperimentChange],
+  );
+
+  const handlePhraseRemove = useCallback(
+    (index: number) => {
+      handleActiveExperimentChange((experiment) => {
+        const phrases = parseInputPhrases(experiment.input);
+
+        if (index < 0 || index >= phrases.length) {
+          return experiment;
+        }
+
+        const nextPhrases = phrases.filter((_, phraseIndex) => phraseIndex !== index);
+
+        return {
+          ...experiment,
+          input: nextPhrases.join("\n"),
+        };
+      });
+    },
+    [handleActiveExperimentChange],
+  );
+
+  const handleAddPhrase = useCallback(() => {
+    handleActiveExperimentChange((experiment) => {
+      const phrases = parseInputPhrases(experiment.input);
+      const nextPhrases = [
+        ...phrases,
+        `Item ${phrases.length + 1}`,
+      ];
+
+      return {
+        ...experiment,
+        input: nextPhrases.join("\n"),
+      };
+    });
+  }, [handleActiveExperimentChange]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
-      const phrases = parseInputPhrases(input);
+      if (!activeExperiment) {
+        return;
+      }
+
+      const phrases = parseInputPhrases(activeExperiment.input);
 
       if (phrases.length === 0) {
         setError("Enter at least one word or phrase to generate embeddings.");
@@ -143,7 +211,6 @@ export function EmbeddingPlayground() {
         return;
       }
 
-      setLastModel(embeddingsResponse.model);
       setStatus("reducing");
       setStatusMessage("Reducing embeddings to 3D for visualization...");
 
@@ -170,9 +237,40 @@ export function EmbeddingPlayground() {
         }
 
         const reduced = (await response.json()) as ReductionApiResponse;
+        const nextPoints = buildEmbeddingPoints(reduced.points, phrases);
 
-        setPoints(buildEmbeddingPoints(reduced.points, phrases));
-        setLastMethod(reduced.method);
+        setPlaygroundState((current) => {
+          const {
+            experiments: currentExperiments,
+            activeExperimentId: currentActiveId,
+          } = current;
+
+          const index = currentExperiments.findIndex(
+            (experiment) => experiment.id === currentActiveId,
+          );
+
+          if (index === -1) {
+            return current;
+          }
+
+          const updatedExperiments = [...currentExperiments];
+          const previous = currentExperiments[index];
+
+          updatedExperiments[index] = {
+            ...previous,
+            points: nextPoints,
+            originalPoints: nextPoints,
+            embeddings: embeddingsResponse.embeddings,
+            model: embeddingsResponse.model,
+            reductionMethod: reduced.method,
+          };
+
+          return {
+            ...current,
+            experiments: updatedExperiments,
+          };
+        });
+
         setStatus("idle");
         setStatusMessage(null);
       } catch (fetchError) {
@@ -185,93 +283,344 @@ export function EmbeddingPlayground() {
         setStatusMessage(null);
       }
     },
-    [input],
+    [activeExperiment],
   );
 
-  const hasPoints = points.length > 0;
-  const isSubmitting = status !== "idle";
+  const handleCreateExperiment = useCallback(() => {
+    setPlaygroundState((current) => {
+      const nextIndex = current.experiments.length + 1;
+      const experiment = createExperiment(nextIndex, INITIAL_TEXT);
+
+      return {
+        experiments: [...current.experiments, experiment],
+        activeExperimentId: experiment.id,
+      };
+    });
+
+    setSelectedPointId(null);
+    setError(null);
+    setStatus("idle");
+    setStatusMessage(null);
+  }, []);
+
+  const handleDuplicateExperiment = useCallback(() => {
+    setPlaygroundState((current) => {
+      const { experiments, activeExperimentId } = current;
+      const source = experiments.find((experiment) => {
+        return experiment.id === activeExperimentId;
+      });
+
+      if (!source) {
+        return current;
+      }
+
+      const createdAt = Date.now();
+      const duplicateExperiment: Experiment = {
+        ...source,
+        id: `exp-${createdAt}-${experiments.length + 1}`,
+        name: `${source.name || "Experiment"} (copy)` as string,
+        createdAt,
+        points: source.points.map((point) => ({ ...point })),
+        originalPoints: source.originalPoints.map((point) => ({ ...point })),
+        embeddings: source.embeddings
+          ? source.embeddings.map((row) => [...row])
+          : null,
+      };
+
+      return {
+        experiments: [...experiments, duplicateExperiment],
+        activeExperimentId: duplicateExperiment.id,
+      };
+    });
+
+    setSelectedPointId(null);
+    setError(null);
+    setStatus("idle");
+    setStatusMessage(null);
+  }, []);
+
+  const handleResetExperiment = useCallback(() => {
+    handleActiveExperimentChange((experiment) => ({
+      ...experiment,
+      input: INITIAL_TEXT,
+      points: [],
+      originalPoints: [],
+      embeddings: null,
+      model: null,
+      reductionMethod: null,
+    }));
+
+    setSelectedPointId(null);
+    setError(null);
+    setStatus("idle");
+    setStatusMessage(null);
+  }, [handleActiveExperimentChange]);
+
+  const handleRenameActiveExperiment = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextName = event.target.value;
+
+      handleActiveExperimentChange((experiment) => ({
+        ...experiment,
+        name: nextName,
+      }));
+    },
+    [handleActiveExperimentChange],
+  );
+
+  const handleSelectExperiment = useCallback((experimentId: string) => {
+    setPlaygroundState((current) => ({
+      ...current,
+      activeExperimentId: experimentId,
+    }));
+
+    setSelectedPointId(null);
+    setError(null);
+    setStatus("idle");
+    setStatusMessage(null);
+  }, []);
+
+  const parsedInputPhrases = useMemo(
+    () => parseInputPhrases(activeInput),
+    [activeInput],
+  );
+
+  const selectedPoint = useMemo(
+    () => activePoints.find((point) => point.id === selectedPointId) ?? null,
+    [activePoints, selectedPointId],
+  );
+
+  const selectedPointIndex = useMemo(
+    () =>
+      selectedPoint
+        ? activePoints.findIndex((point) => point.id === selectedPoint.id)
+        : -1,
+    [activePoints, selectedPoint],
+  );
+
+  const selectedPointNeighbors = useMemo(() => {
+    if (
+      !activeExperiment ||
+      !activeExperiment.embeddings ||
+      selectedPointIndex < 0
+    ) {
+      return [];
+    }
+
+    const target = activeExperiment.embeddings[selectedPointIndex];
+    const neighbors: {
+      index: number;
+      label: string;
+      cosine: number;
+      distance: number;
+    }[] = [];
+
+    const count = Math.min(
+      activeExperiment.points.length,
+      activeExperiment.embeddings.length,
+    );
+
+    for (let index = 0; index < count; index += 1) {
+      if (index === selectedPointIndex) {
+        continue;
+      }
+
+      const candidateVector = activeExperiment.embeddings[index];
+
+      try {
+        const cosine = cosineSimilarity(target, candidateVector);
+        const distance = euclideanDistance(target, candidateVector);
+        const label =
+          activeExperiment.points[index]?.label ?? `Item ${index + 1}`;
+
+        neighbors.push({
+          index,
+          label,
+          cosine,
+          distance,
+        });
+      } catch {
+        // Ignore invalid vectors; they should be rare.
+      }
+    }
+
+    neighbors.sort((a, b) => b.cosine - a.cosine);
+
+    return neighbors.slice(0, 5);
+  }, [activeExperiment, selectedPointIndex]);
+
+  const handleToggleManipulationMode = useCallback(() => {
+    setManipulationMode((current) => !current);
+    setSelectedPointId(null);
+  }, []);
+
+  const handlePointSelect = useCallback(
+    (pointId: string | null) => {
+      if (!manipulationMode) {
+        return;
+      }
+
+      setSelectedPointId(pointId);
+    },
+    [manipulationMode],
+  );
+
+  const handleNudgeSelectedPoint = useCallback(
+    (axis: 0 | 1 | 2, delta: number) => {
+      if (!selectedPointId) {
+        return;
+      }
+
+      handleActiveExperimentChange((experiment) => {
+        const index = experiment.points.findIndex(
+          (point) => point.id === selectedPointId,
+        );
+
+        if (index === -1) {
+          return experiment;
+        }
+
+        const nextPoints = experiment.points.map((point, pointIndex) => {
+          if (pointIndex !== index) {
+            return point;
+          }
+
+          const nextPosition =
+            [...point.position] as [number, number, number];
+          nextPosition[axis] = nextPosition[axis] + delta;
+
+          return {
+            ...point,
+            position: nextPosition,
+          };
+        });
+
+        return {
+          ...experiment,
+          points: nextPoints,
+        };
+      });
+    },
+    [handleActiveExperimentChange, selectedPointId],
+  );
+
+  const handleResetSelectedPointPosition = useCallback(() => {
+    if (!selectedPointId) {
+      return;
+    }
+
+    handleActiveExperimentChange((experiment) => {
+      const index = experiment.points.findIndex(
+        (point) => point.id === selectedPointId,
+      );
+
+      if (index === -1 || index >= experiment.originalPoints.length) {
+        return experiment;
+      }
+
+      const original = experiment.originalPoints[index];
+
+      const nextPoints = experiment.points.map((point, pointIndex) =>
+        pointIndex === index
+          ? {
+              ...point,
+              position: [...original.position] as [
+                number,
+                number,
+                number,
+              ],
+            }
+          : point,
+      );
+
+      return {
+        ...experiment,
+        points: nextPoints,
+      };
+    });
+  }, [handleActiveExperimentChange, selectedPointId]);
+
+  const handlePointLabelChange = useCallback(
+    (pointId: string, label: string) => {
+      handleActiveExperimentChange((experiment) => {
+        const nextPoints = experiment.points.map((point) =>
+          point.id === pointId ? { ...point, label } : point,
+        );
+        const nextOriginalPoints = experiment.originalPoints.map((point) =>
+          point.id === pointId ? { ...point, label } : point,
+        );
+
+        return {
+          ...experiment,
+          points: nextPoints,
+          originalPoints: nextOriginalPoints,
+        };
+      });
+    },
+    [handleActiveExperimentChange],
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-2 text-sm">
-          <span className="font-medium text-zinc-100">
-            Text inputs
-          </span>
-          <span className="text-xs text-zinc-400">
-            Enter one word or short phrase per line. For a single line, you can
-            separate multiple entries with commas. The playground will generate
-            embeddings for each entry and project them into 3D.
-          </span>
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            rows={5}
-            className="mt-1 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 shadow-sm outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-            spellCheck={false}
-          />
-        </label>
+      <EmbeddingPlaygroundExperiments
+        experiments={experiments}
+        activeExperiment={activeExperiment}
+        onCreateExperiment={handleCreateExperiment}
+        onDuplicateExperiment={handleDuplicateExperiment}
+        onResetExperiment={handleResetExperiment}
+        onSelectExperiment={handleSelectExperiment}
+        onRenameActiveExperiment={handleRenameActiveExperiment}
+      />
 
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400">
-          <div>
-            {hasPoints ? (
-              <span>
-                Showing {points.length} point{points.length === 1 ? "" : "s"}
-                {lastMethod ? ` reduced with ${lastMethod.toUpperCase()}` : ""}
-                {lastModel ? ` from ${lastModel}` : ""}.
-              </span>
-            ) : (
-              <span>Ready to generate embeddings for your inputs.</span>
-            )}
-          </div>
+      <EmbeddingPlaygroundForm
+        activeExperiment={activeExperiment}
+        parsedInputPhrases={parsedInputPhrases}
+        hasPoints={hasPoints}
+        activePointsCount={activePoints.length}
+        isSubmitting={isSubmitting}
+        statusMessage={statusMessage}
+        error={error}
+        onSubmit={handleSubmit}
+        onAddPhrase={handleAddPhrase}
+        onPhraseEdit={handlePhraseEdit}
+        onPhraseRemove={handlePhraseRemove}
+      />
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSubmitting ? "Generating..." : "Generate embeddings"}
-          </button>
-        </div>
+      <EmbeddingPlaygroundSceneSection
+        points={activePoints}
+        manipulationMode={manipulationMode}
+        hasPoints={hasPoints}
+        selectedPointId={selectedPointId}
+        onToggleManipulationMode={handleToggleManipulationMode}
+        onPointSelect={handlePointSelect}
+      />
 
-        {statusMessage && (
-          <p className="text-xs text-zinc-400">{statusMessage}</p>
-        )}
+      <EmbeddingPlaygroundManipulationPanel
+        manipulationMode={manipulationMode}
+        hasPoints={hasPoints}
+        activeExperiment={activeExperiment}
+        selectedPointIndex={selectedPointIndex}
+        selectedPoint={selectedPoint}
+        selectedPointNeighbors={selectedPointNeighbors}
+        onNudgeSelectedPoint={handleNudgeSelectedPoint}
+        onResetSelectedPointPosition={handleResetSelectedPointPosition}
+      />
 
-        {error && (
-          <p className="text-xs font-medium text-red-400">{error}</p>
-        )}
-      </form>
+      <EmbeddingPlaygroundInputsAndLabels
+        hasPoints={hasPoints}
+        activePoints={activePoints}
+        onPointLabelChange={handlePointLabelChange}
+      />
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 shadow-sm md:p-6">
-        <EmbeddingScene
-          points={points}
-          emptyState={
-            <p className="max-w-sm text-center text-xs text-zinc-400">
-              Enter a few words like <code>king</code>, <code>queen</code>,
-              <code>man</code>, and <code>woman</code> above, then click
-              <span className="font-medium"> Generate embeddings</span> to see
-              them plotted here.
-            </p>
-          }
-        />
-      </section>
-
-      {hasPoints && (
-        <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
-          <h2 className="mb-2 font-medium text-zinc-100">Inputs</h2>
-          <ul className="grid gap-1 sm:grid-cols-2 md:grid-cols-3">
-            {points.map((point, index) => (
-              <li key={point.id} className="truncate text-zinc-400">
-                <span className="font-mono text-[10px] text-zinc-500">
-                  {index + 1}.
-                </span>{" "}
-                <span>{point.label}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <EmbeddingPlaygroundComparisonPanel
+        experiments={experiments}
+        primaryComparisonId={primaryComparisonId}
+        secondaryComparisonId={secondaryComparisonId}
+        comparisonFocusIndex={comparisonFocusIndex}
+        onPrimaryComparisonIdChange={setPrimaryComparisonId}
+        onSecondaryComparisonIdChange={setSecondaryComparisonId}
+        onComparisonFocusIndexChange={setComparisonFocusIndex}
+      />
     </div>
   );
 }
