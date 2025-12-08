@@ -1,10 +1,9 @@
-import type { ChangeEvent, FormEvent } from "react";
+import type { FormEvent } from "react";
 
 import type { Experiment } from "@/components/EmbeddingPlaygroundState";
 
 type EmbeddingPlaygroundFormProps = {
   activeExperiment: Experiment | null;
-  activeInput: string;
   parsedInputPhrases: string[];
   hasPoints: boolean;
   activePointsCount: number;
@@ -12,7 +11,6 @@ type EmbeddingPlaygroundFormProps = {
   statusMessage: string | null;
   error: string | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onInputChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
   onAddPhrase: () => void;
   onPhraseEdit: (index: number, value: string) => void;
   onPhraseRemove: (index: number) => void;
@@ -20,7 +18,6 @@ type EmbeddingPlaygroundFormProps = {
 
 export function EmbeddingPlaygroundForm({
   activeExperiment,
-  activeInput,
   parsedInputPhrases,
   hasPoints,
   activePointsCount,
@@ -28,27 +25,19 @@ export function EmbeddingPlaygroundForm({
   statusMessage,
   error,
   onSubmit,
-  onInputChange,
   onAddPhrase,
   onPhraseEdit,
   onPhraseRemove,
 }: EmbeddingPlaygroundFormProps) {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <label className="flex flex-col gap-2 text-sm">
+      <div className="flex flex-col gap-2 text-sm">
         <span className="font-medium text-zinc-100">Text inputs</span>
         <span className="text-xs text-zinc-400">
-          Enter one word or short phrase per line. Use experiments to explore
-          variations without losing your previous runs.
+          Manage your inputs as a list of structured entries. Each row becomes
+          one embedding input, and you can add, edit, or remove entries below.
         </span>
-        <textarea
-          value={activeInput}
-          onChange={onInputChange}
-          rows={5}
-          className="mt-1 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 shadow-sm outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-          spellCheck={false}
-        />
-      </label>
+      </div>
 
       <div className="rounded-md border border-dashed border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -63,14 +52,15 @@ export function EmbeddingPlaygroundForm({
         </div>
         {parsedInputPhrases.length === 0 ? (
           <p className="text-[11px] text-zinc-500">
-            No entries yet. Start typing above, or use the sample starting
-            text.
+            No entries yet. Use 
+            <span className="font-medium text-zinc-300"> Add entry </span>
+            to start building your list.
           </p>
         ) : (
           <ul className="space-y-1">
             {parsedInputPhrases.map((phrase, index) => (
               <li
-                key={`${index}-${phrase}`}
+                key={index}
                 className="flex items-center gap-2 text-[11px]"
               >
                 <span className="w-5 text-right font-mono text-[10px] text-zinc-500">

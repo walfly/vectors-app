@@ -102,18 +102,6 @@ export function EmbeddingPlayground() {
     [],
   );
 
-  const handleInputChange = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
-      const newValue = event.target.value;
-
-      handleActiveExperimentChange((experiment) => ({
-        ...experiment,
-        input: newValue,
-      }));
-    },
-    [handleActiveExperimentChange],
-  );
-
   const handlePhraseEdit = useCallback(
     (index: number, value: string) => {
       handleActiveExperimentChange((experiment) => {
@@ -158,7 +146,10 @@ export function EmbeddingPlayground() {
   const handleAddPhrase = useCallback(() => {
     handleActiveExperimentChange((experiment) => {
       const phrases = parseInputPhrases(experiment.input);
-      const nextPhrases = [...phrases, ""];
+      const nextPhrases = [
+        ...phrases,
+        `Item ${phrases.length + 1}`,
+      ];
 
       return {
         ...experiment,
@@ -583,7 +574,6 @@ export function EmbeddingPlayground() {
 
       <EmbeddingPlaygroundForm
         activeExperiment={activeExperiment}
-        activeInput={activeInput}
         parsedInputPhrases={parsedInputPhrases}
         hasPoints={hasPoints}
         activePointsCount={activePoints.length}
@@ -591,7 +581,6 @@ export function EmbeddingPlayground() {
         statusMessage={statusMessage}
         error={error}
         onSubmit={handleSubmit}
-        onInputChange={handleInputChange}
         onAddPhrase={handleAddPhrase}
         onPhraseEdit={handlePhraseEdit}
         onPhraseRemove={handlePhraseRemove}
