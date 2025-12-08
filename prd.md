@@ -4,10 +4,10 @@
 
 | | |
 |---|---|
-| **Document Version** | 1.1 |
-| **Date** | December 6, 2025 |
+| **Document Version** | 1.2 |
+| **Date** | December 8, 2025 |
 | **Status** | Draft for Review |
-| **Architecture** | TypeScript Full-Stack (Next.js) |
+| **Architecture** | TypeScript Next.js app (Vercel) + embeddings server (Render) |
 
 ---
 
@@ -157,12 +157,16 @@ Deep-dive into the hypothesis that semantic concepts correspond to linear direct
 
 ### 6.1 Architecture Overview
 
-This is a **full-stack TypeScript application** built entirely in Next.js with no separate backend services. All ML inference, API routes, and rendering are handled within a single Next.js deployment. This approach provides:
+VectorVerse now uses a **two-service TypeScript architecture**:
 
-- **Single codebase:** All code in TypeScript for consistency and type safety
-- **Simplified deployment:** One Vercel project, no infrastructure orchestration
-- **Reduced costs:** No separate ML server or container hosting
-- **Faster iteration:** Changes deploy in seconds, not minutes
+- **Next.js application (Vercel):** Handles all user-facing pages and lightweight API routes. Public endpoints like `/api/embeddings`, `/api/warm`, and `/api/health` live here as thin HTTP proxies.
+- **Embeddings server (Render):** A separate Node/Express service that owns all Hugging Face model loading, embeddings generation, and caching. It exposes its own `/api/embeddings`, `/api/warm`, and `/api/health` endpoints.
+
+The Next app talks to the embeddings server via an `EMBEDDINGS_SERVER_URL` environment variable. This split:
+
+- Keeps heavy ML dependencies (ONNX runtime, Transformers) out of the Vercel runtime
+- Lets the embeddings server scale and be tuned independently (CPU/memory, Redis, warm-up behavior)
+- Preserves a single-language workflow: both services are written in TypeScript/Node
 
 ### 6.2 Frontend Stack
 
@@ -179,7 +183,8 @@ All machine learning runs in JavaScript/TypeScript—no Python required.
 
 | Capability | Library | Notes |
 |------------|---------|-------|
-| **Embedding Generation** | `@huggingface/transformers` | Hugging Face Transformers.js, runs in Node.js API routes |
+| **Embedding Generation** | `@huggingface/transformers` | Runs in a dedicated embeddings server on Render (Node/Express + ONNX runtime), called from the Next app via HTTP |
+| **Embeddings Cache** | `redis` | Redis instance managed by Render, used by the embeddings server to cache embeddings keyed by model + inputs |
 | **Fallback Embeddings** | OpenAI/Cohere API | Optional, for higher quality when needed |
 | **Dimensionality Reduction** | `umap-js`, `ml-pca` | Pure JS implementations of UMAP and PCA |
 | **Vector Math** | Custom utilities | Cosine similarity, Euclidean distance, arithmetic |
@@ -193,12 +198,14 @@ All machine learning runs in JavaScript/TypeScript—no Python required.
 
 ### 6.4 Infrastructure
 
-- **Hosting:** Vercel (single deployment for entire application)
-- **Caching:** Vercel KV (Redis-compatible) for embedding cache
+- **Hosting:**
+  - Next.js application on Vercel (pages, playground UI, and lightweight API routes)
+  - Embeddings server on Render as a long-lived Dockerized Node/Express service
+- **Caching (embeddings):** Redis instance on Render, used by the embeddings server for embeddings cache
 - **Database (optional):** Vercel Postgres or Supabase for vocabulary storage and user data
-- **Edge Functions:** Low-latency API routes for lightweight operations (vector math, cache lookups)
-- **Serverless Functions:** Standard Node.js runtime for ML inference (1GB memory, 30s timeout)
-- **Monitoring:** Vercel Analytics + Vercel Logs for performance monitoring
+- **Edge Functions:** Low-latency API routes in the Next app for lightweight operations (vector math, cache lookups, and proxying to the embeddings server)
+- **Serverless Functions:** Reserved for any future heavier non-embeddings work; embeddings inference itself runs in the dedicated server
+- **Monitoring:** Vercel Analytics + Logs for the Next app, plus Render metrics/logs for the embeddings server
 
 ### 6.5 Key Dependencies
 
@@ -229,7 +236,7 @@ All machine learning runs in JavaScript/TypeScript—no Python required.
 | 3D visualization | 60fps | With 100+ points on modern browsers |
 | Initial page load | <3s | On 4G connections |
 | Time to interactive | <2s | Core functionality available |
-| Concurrent users | 1,000+ | Via Vercel's serverless scaling |
+| Concurrent users | 1,000+ | Via Vercel edge runtime + Render autoscaling for the embeddings server |
 
 ### 6.7 API Routes (Next.js)
 
@@ -237,13 +244,23 @@ All API endpoints are Next.js Route Handlers in the `app/api/` directory:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/embeddings` | POST | Generate embeddings from text input |
+| `/api/embeddings` | POST | Proxy to the embeddings server to generate embeddings from text input |
 | `/api/reduce` | POST | Reduce high-dimensional vectors to 2D/3D |
 | `/api/similarity` | POST | Calculate similarity between vectors |
 | `/api/nearest` | POST | Find nearest neighbors in vocabulary |
 | `/api/arithmetic` | POST | Perform vector arithmetic operations |
-| `/api/health` | GET | Health check and model status |
-| `/api/warm` | GET | Pre-load model (called by cron) |
+| `/api/health` | GET | Combined health check that proxies embeddings server status and reports app KV availability (e.g., Vercel KV) |
+| `/api/warm` | GET | Proxy to embeddings server warm-up endpoint (still called by cron) |
+
+The embeddings server exposes a matching internal HTTP API (not called directly from the browser):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `${EMBEDDINGS_SERVER_URL}/api/embeddings` | POST | Generates embeddings using Hugging Face Transformers and returns normalized vectors plus model metadata |
+| `${EMBEDDINGS_SERVER_URL}/api/warm` | GET | Triggers model initialization and reports warm-up status |
+| `${EMBEDDINGS_SERVER_URL}/api/health` | GET | Reports model load status (`ok` / `degraded` / `error`) |
+
+The Next.js `/api/embeddings`, `/api/warm`, and `/api/health` routes simply forward to these endpoints and surface their JSON responses to clients.
 
 ---
 
@@ -296,11 +313,11 @@ All API endpoints are Next.js Route Handlers in the `app/api/` directory:
 
 | Risk | Severity | Impact | Mitigation |
 |------|----------|--------|------------|
-| Serverless cold starts | High | Slow first request (~3-5s for model loading) | Implement warm-up cron job, use smaller models, show loading state |
+| Embeddings server cold start | High | Slow first request (~3-5s for model loading) | Expose `/api/warm` and use a cron job to hit it, use smaller models, show loading state |
 | WebGL performance issues | Medium | Poor UX on older devices | Provide 2D fallback, progressive enhancement |
 | Concept too abstract | Medium | Users still confused after use | Extensive user testing, iterative UX improvement |
 | Transformers.js model limitations | Medium | Smaller models less accurate than Python alternatives | Offer optional OpenAI API fallback for higher quality |
-| Serverless memory limits | Low | Large batches fail | Limit batch sizes, chunk large requests |
+| Embeddings server memory limits | Low | Large batches fail | Limit batch sizes, chunk large requests |
 | Embedding model changes | Low | Pre-computed examples break | Version-pin models, abstract model layer |
 
 ---
@@ -331,28 +348,32 @@ VectorVerse aims to become the go-to educational platform for understanding not 
 - **Nearest Neighbor Search:** Finding the most similar vectors to a query vector in embedding space
 - **Transformers.js:** Hugging Face library that runs transformer models in JavaScript/TypeScript
 
-### 12.2 Technology Decision: TypeScript-Only Architecture
+### 12.2 Technology Decision: TypeScript-Only, Dual-Service Architecture
 
 **Why no Python backend?**
 
-| Consideration | Python Backend | TypeScript-Only |
-|--------------|----------------|-----------------|
-| Deployment complexity | Two services to deploy/monitor | Single Vercel deployment |
-| Cold start latency | Separate cold starts | One cold start |
-| Development experience | Context switching between languages | Single language, unified types |
-| Hosting costs | Separate ML server ($50-200/mo) | Included in Vercel plan |
-| Model quality | Full PyTorch/TensorFlow models | Smaller ONNX models |
-| Team requirements | Python + TypeScript expertise | TypeScript only |
+Even after moving embeddings into a dedicated server on Render, the stack remains entirely TypeScript/Node. We intentionally avoid introducing a separate Python service so the team can stay in a single language and share types and patterns across both the Next app and the embeddings server.
+
+| Consideration | Python Backend | TypeScript-Only (Next + embeddings server) |
+|--------------|----------------|---------------------------------------------|
+| Deployment complexity | Separate Python API + frontend, different runtimes | Two Node/TypeScript services (Vercel app + Render embeddings server) with shared tooling |
+| Cold start latency | Separate cold starts per service, heavier ML containers | Next.js edge routes cold-start quickly; embeddings server is long-lived with an explicit warm-up endpoint |
+| Development experience | Context switching between languages | Single language, unified types, easier code sharing between app and embeddings server |
+| Hosting costs | Dedicated Python/ML server ($50-200+/mo) plus frontend hosting | Moderate Node/ONNX containers on Render + Vercel app; still cheaper than a GPU-focused Python stack |
+| Model quality | Full PyTorch/TensorFlow models | ONNX/Transformers-based models that are sufficient for educational use |
+| Team requirements | Python + TypeScript expertise | TypeScript/Node expertise only |
 
 **Trade-offs accepted:**
 - Slightly lower embedding quality (mitigated by optional OpenAI fallback)
-- Longer cold starts for ML routes (mitigated by warm-up cron)
+- Longer initial warm-up for the embeddings server (mitigated by a dedicated `/api/warm` endpoint and cron)
 - Limited to models that run in ONNX/Transformers.js
+- Slightly more operational complexity than a single-service app, but still much simpler than a mixed Python + TypeScript stack
+- Need to co-locate the Render embeddings server and Vercel app in compatible regions to keep cross-service latency within performance targets
 
 **Why this is right for VectorVerse:**
-- Educational platform prioritizes UX over model sophistication
-- Simpler architecture = faster iteration on learning features
-- Lower costs = sustainable as a free educational resource
+- Educational platform prioritizes UX and reliability over squeezing out maximum model sophistication
+- Two small TypeScript services with clear boundaries are easier to reason about than a split Python + JS stack
+- Isolating embeddings into a dedicated Render service avoids deployment issues from bundling heavy ML libraries into the Vercel app while keeping overall costs manageable
 
 ### 12.3 References
 
