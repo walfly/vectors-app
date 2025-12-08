@@ -1,4 +1,9 @@
-import { Pool, type QueryResult, type QueryResultRow } from "pg";
+import {
+  Pool,
+  type QueryConfigValues,
+  type QueryResult,
+  type QueryResultRow,
+} from "pg";
 
 const PGVECTOR_DATABASE_URL_ENV = "PGVECTOR_DATABASE_URL" as const;
 
@@ -115,15 +120,16 @@ export async function getPgvectorPool(): Promise<PgvectorPool> {
 }
 
 export async function runPgvectorQuery<
-  T extends QueryResultRow = QueryResultRow,
+  TRow extends QueryResultRow = QueryResultRow,
+  TParams extends unknown[] = unknown[],
 >(
   text: string,
-  values?: readonly unknown[],
-): Promise<QueryResult<T>> {
+  values?: QueryConfigValues<TParams>,
+): Promise<QueryResult<TRow>> {
   const pool = await getPgvectorPool();
 
   try {
-    return await pool.query<T>(text, values as unknown as any[]);
+    return await pool.query<TRow>(text, values);
   } catch (error) {
     const normalizedError =
       error instanceof Error ? error : new Error(String(error));
