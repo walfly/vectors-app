@@ -41,14 +41,12 @@ export function parseInputPhrases(raw: string): string[] {
   if (normalized.includes("\n")) {
     return normalized
       .split("\n")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
+      .filter((value) => value.trim().length > 0);
   }
 
   return normalized
     .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+    .filter((value) => value.trim().length > 0);
 }
 
 export async function readErrorMessage(response: Response): Promise<string> {
