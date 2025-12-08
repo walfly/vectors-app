@@ -155,9 +155,25 @@ export function getPgvectorDbStatus(): PgvectorDbStatus {
 }
 
 function resetPgvectorClientState() {
+  const existingPool = state.pool;
+
   state.pool = null;
   state.initPromise = null;
   state.initError = null;
+
+  if (existingPool) {
+    // Best-effort, fire-and-forget cleanup in tests; log but ignore errors.
+    void existingPool
+      .end()
+      .catch((endError) => {
+        console.error(
+          "Failed to clean up PGVector Postgres pool during test reset",
+          endError instanceof Error
+            ? endError
+            : new Error(String(endError)),
+        );
+      });
+  }
 }
 
 /**

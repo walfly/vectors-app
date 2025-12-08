@@ -11,7 +11,7 @@ const poolInstances: PoolInstance[] = [];
 const PoolConstructorMock = vi.fn(function () {
   const instance: PoolInstance = {
     query: vi.fn(),
-    end: vi.fn(),
+    end: vi.fn().mockResolvedValue(undefined),
     on: vi.fn(),
   };
 
@@ -123,6 +123,66 @@ describe("pgvector Postgres client", () => {
     expect(instance.query).toHaveBeenCalledTimes(2);
     expect(poolInstances).toHaveLength(1);
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("ends an existing pool when resetting client state in tests", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PGVECTOR_DATABASE_URL", "postgres://user:pass@localhost:5432/db");
+
+    const {
+      getPgvectorPool,
+      __resetPgvectorClientStateForTests,
+    } = await loadPgvectorModule();
+
+    // First reset: should be a no-op for pool instances.
+    __resetPgvectorClientStateForTests();
+
+    expect(poolInstances).toHaveLength(0);
+
+    const pool = await getPgvectorPool();
+
+    expect(poolInstances).toHaveLength(1);
+    const instance = poolInstances[0];
+
+    expect(pool).toBe(instance);
+    expect(instance.end).not.toHaveBeenCalled();
+
+    __resetPgvectorClientStateForTests();
+
+    expect(poolInstances).toHaveLength(1);
+    expect(instance.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and ignores errors when pool end fails during test reset", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PGVECTOR_DATABASE_URL", "postgres://user:pass@localhost:5432/db");
+
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const {
+      getPgvectorPool,
+      __resetPgvectorClientStateForTests,
+    } = await loadPgvectorModule();
+
+    const pool = await getPgvectorPool();
+
+    expect(poolInstances).toHaveLength(1);
+    const instance = poolInstances[0];
+
+    const endError = new Error("end failed");
+    instance.end.mockRejectedValueOnce(endError);
+
+    __resetPgvectorClientStateForTests();
+
+    // Allow the rejection handler to run.
+    await Promise.resolve();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Failed to clean up PGVector Postgres pool during test reset",
+      endError,
+    );
   });
 
   it("records and logs initialization failures when connectivity check fails", async () => {
