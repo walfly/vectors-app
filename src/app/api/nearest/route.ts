@@ -6,6 +6,11 @@ import {
   dotProduct,
   euclideanDistance,
 } from "../../../lib/vectors";
+import {
+  parseLabeledVectorCandidates,
+  validateNumericVectorEntries,
+} from "../vector-validation";
+import type { LabeledVector, ValidationErrorBody } from "../vector-validation";
 import { buildErrorResponse } from "../../../lib/utils/responses";
 
 export const runtime = "edge";
@@ -22,19 +27,9 @@ type NearestResponseBody = {
   neighbors: NearestNeighbor[];
 };
 
-type ErrorResponseBody = {
-  error: string;
-};
+type ErrorResponseBody = ValidationErrorBody;
 
-type RawNearestCandidate = {
-  id?: unknown;
-  vector?: unknown;
-};
-
-type ParsedNearestCandidate = {
-  id: string;
-  vector: Vector;
-};
+type ParsedNearestCandidate = LabeledVector;
 
 type RawNearestRequest = {
   query?: unknown;
@@ -75,97 +70,27 @@ function parseNearestRequest(body: unknown): ParsedNearestRequest | ErrorRespons
     };
   }
 
-  for (let i = 0; i < query.length; i += 1) {
-    const value = query[i];
+  const validatedQuery = validateNumericVectorEntries("query", query);
 
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return {
-        error: `Invalid request body: 'query[${i}]' must be a finite number.`,
-      };
-    }
+  if ("error" in validatedQuery) {
+    return validatedQuery;
   }
 
-  if (!Array.isArray(candidates)) {
-    return {
-      error:
-        "Invalid request body: 'candidates' must be a non-empty array of objects with 'id' and 'vector' properties.",
-    };
-  }
+  const queryDimension = validatedQuery.length;
 
-  if (candidates.length === 0) {
-    return {
-      error:
-        "Invalid request body: 'candidates' array must contain at least one candidate.",
-    };
-  }
+  const parsedCandidatesResult = parseLabeledVectorCandidates(candidates, {
+    fieldName: "candidates",
+    nonArrayMessage:
+      "Invalid request body: 'candidates' must be a non-empty array of objects with 'id' and 'vector' properties.",
+    emptyArrayMessage:
+      "Invalid request body: 'candidates' array must contain at least one candidate.",
+    dimension: queryDimension,
+    dimensionMismatchMessage:
+      "Invalid request body: all candidate vectors must have the same length as the query vector.",
+  });
 
-  const queryDimension = query.length;
-  const parsedCandidates: ParsedNearestCandidate[] = [];
-
-  for (let i = 0; i < candidates.length; i += 1) {
-    const candidate = candidates[i];
-
-    if (candidate === null || typeof candidate !== "object") {
-      return {
-        error:
-          "Invalid request body: 'candidates[" +
-          i +
-          "]' must be an object with 'id' and 'vector' properties.",
-      };
-    }
-
-    const { id, vector } = candidate as RawNearestCandidate;
-
-    if (typeof id !== "string" || id.length === 0) {
-      return {
-        error:
-          "Invalid request body: 'candidates[" +
-          i +
-          "].id' must be a non-empty string.",
-      };
-    }
-
-    if (!Array.isArray(vector)) {
-      return {
-        error:
-          "Invalid request body: 'candidates[" +
-          i +
-          "].vector' must be an array of numbers.",
-      };
-    }
-
-    if (vector.length === 0) {
-      return {
-        error:
-          "Invalid request body: 'candidates[" +
-          i +
-          "].vector' must not be empty.",
-      };
-    }
-
-    if (vector.length !== queryDimension) {
-      return {
-        error:
-          "Invalid request body: all candidate vectors must have the same length as the query vector.",
-      };
-    }
-
-    for (let j = 0; j < vector.length; j += 1) {
-      const value = vector[j];
-
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        return {
-          error:
-            "Invalid request body: 'candidates[" +
-            i +
-            "].vector[" +
-            j +
-            "]' must be a finite number.",
-        };
-      }
-    }
-
-    parsedCandidates.push({ id, vector: vector as Vector });
+  if ("error" in parsedCandidatesResult) {
+    return parsedCandidatesResult;
   }
 
   let kValue: number;
@@ -192,8 +117,8 @@ function parseNearestRequest(body: unknown): ParsedNearestRequest | ErrorRespons
   }
 
   return {
-    query: query as Vector,
-    candidates: parsedCandidates,
+    query: validatedQuery,
+    candidates: parsedCandidatesResult.candidates,
     k: kValue,
     metric: metricValue,
   };

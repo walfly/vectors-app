@@ -6,22 +6,21 @@ import {
   dotProduct,
   euclideanDistance,
 } from "../../../lib/vectors";
+import {
+  parseLabeledVectorCandidates,
+  validateNumericVectorEntries,
+} from "../vector-validation";
+import type { LabeledVector, ValidationErrorBody } from "../vector-validation";
 import { buildErrorResponse } from "../../../lib/utils/responses";
 
 export const runtime = "edge";
 
 type ArithmeticMetric = "cosine" | "euclidean" | "dot";
 
-type ArithmeticTerm = {
-  id: string;
-  vector: Vector;
+type ArithmeticTerm = LabeledVector & {
   weight: number;
 };
-
-type ArithmeticCandidate = {
-  id: string;
-  vector: Vector;
-};
+type ArithmeticCandidate = LabeledVector;
 
 type NearestNeighbor = {
   id: string;
@@ -33,20 +32,12 @@ type ArithmeticResponseBody = {
   metric: ArithmeticMetric;
   neighbors?: NearestNeighbor[];
 };
-
-type ErrorResponseBody = {
-  error: string;
-};
+type ErrorResponseBody = ValidationErrorBody;
 
 type RawArithmeticTerm = {
   id?: unknown;
   vector?: unknown;
   weight?: unknown;
-};
-
-type RawArithmeticCandidate = {
-  id?: unknown;
-  vector?: unknown;
 };
 
 type RawArithmeticRequest = {
@@ -153,108 +144,37 @@ function parseArithmeticRequest(body: unknown):
       };
     }
 
-    for (let j = 0; j < vector.length; j += 1) {
-      const value = vector[j];
+    const numericVector = validateNumericVectorEntries(
+      "terms[" + i + "].vector",
+      vector,
+    );
 
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        return {
-          error:
-            "Invalid request body: 'terms[" +
-            i +
-            "].vector[" +
-            j +
-            "]' must be a finite number.",
-        };
-      }
+    if ("error" in numericVector) {
+      return numericVector;
     }
 
-    parsedTerms.push({ id, vector: vector as Vector, weight });
+    parsedTerms.push({ id, vector: numericVector, weight });
   }
 
   let parsedCandidates: ArithmeticCandidate[] | undefined;
 
   if (candidates !== undefined) {
-    if (!Array.isArray(candidates)) {
-      return {
-        error:
-          "Invalid request body: 'candidates' must be a non-empty array of { id, vector } objects when provided.",
-      };
+    const parsedCandidatesResult = parseLabeledVectorCandidates(candidates, {
+      fieldName: "candidates",
+      nonArrayMessage:
+        "Invalid request body: 'candidates' must be a non-empty array of { id, vector } objects when provided.",
+      emptyArrayMessage:
+        "Invalid request body: 'candidates' array must contain at least one candidate when provided.",
+      dimension: dimension === null ? undefined : dimension,
+      dimensionMismatchMessage:
+        "Invalid request body: all candidate vectors must have the same length as the term vectors.",
+    });
+
+    if ("error" in parsedCandidatesResult) {
+      return parsedCandidatesResult;
     }
 
-    if (candidates.length === 0) {
-      return {
-        error:
-          "Invalid request body: 'candidates' array must contain at least one candidate when provided.",
-      };
-    }
-
-    parsedCandidates = [];
-
-    for (let i = 0; i < candidates.length; i += 1) {
-      const candidate = candidates[i];
-
-      if (candidate === null || typeof candidate !== "object") {
-        return {
-          error:
-            "Invalid request body: 'candidates[" +
-            i +
-            "]' must be an object with 'id' and 'vector' properties.",
-        };
-      }
-
-      const { id, vector } = candidate as RawArithmeticCandidate;
-
-      if (typeof id !== "string" || id.length === 0) {
-        return {
-          error:
-            "Invalid request body: 'candidates[" +
-            i +
-            "].id' must be a non-empty string.",
-        };
-      }
-
-      if (!Array.isArray(vector)) {
-        return {
-          error:
-            "Invalid request body: 'candidates[" +
-            i +
-            "].vector' must be an array of numbers.",
-        };
-      }
-
-      if (vector.length === 0) {
-        return {
-          error:
-            "Invalid request body: 'candidates[" +
-            i +
-            "].vector' must not be empty.",
-        };
-      }
-
-      if (dimension !== null && vector.length !== dimension) {
-        return {
-          error:
-            "Invalid request body: all candidate vectors must have the same length as the term vectors.",
-        };
-      }
-
-      for (let j = 0; j < vector.length; j += 1) {
-        const value = vector[j];
-
-        if (typeof value !== "number" || !Number.isFinite(value)) {
-          return {
-            error:
-              "Invalid request body: 'candidates[" +
-              i +
-              "].vector[" +
-              j +
-              "]' must be a finite number.",
-          };
-        }
-      }
-
-      parsedCandidates.push({ id, vector: vector as Vector });
-    }
+    parsedCandidates = parsedCandidatesResult.candidates;
   }
 
   let kValue: number | undefined;
