@@ -73,6 +73,27 @@ By default the server listens on `http://localhost:4000` and exposes:
 
 The first run will download the model and may take a little while to warm up.
 
+If you want to run the embeddings server together with Redis **and** a
+Postgres instance (with the `pgvector` extension enabled) locally, you can
+also use Docker:
+
+```bash
+cd embeddings-server
+docker compose up
+```
+
+This will start:
+
+- The embeddings server on `http://localhost:4000`
+- Redis on `localhost:6379`
+- Postgres (with `pgvector`) on `localhost:5432`, with a default `embeddings`
+  database and credentials `postgres` / `postgres`
+
+> **Note:** These Postgres credentials are intended for local development
+> only. For any shared, staging, or production environment, configure a
+> separate Postgres instance with strong, unique credentials and do **not**
+> reuse `postgres` / `postgres`.
+
 ### 3. Configure the Next app to talk to the embeddings server
 
 In the repo root, create `.env.local` with at least:
@@ -157,7 +178,8 @@ Set these in Vercel (or `.env.local` for local dev):
 Set these wherever the embeddings server runs (Render, local Docker, etc.):
 
 - **Minimal config:** `PORT` may be provided by the platform; otherwise the
-  server defaults to `4000`. Redis-related variables are optional.
+  server defaults to `4000`. Redis and Postgres-related variables are optional
+  but recommended for caching and pgvector-backed storage.
 
 - `PORT` *(optional, default `4000`)* – HTTP port for the embeddings server.
 - `REDIS_URL` *(optional but recommended)* – Redis connection string used for
@@ -167,6 +189,22 @@ Set these wherever the embeddings server runs (Render, local Docker, etc.):
   seconds. When unset, entries default to a 24-hour TTL. If set to a
   non-positive or non-numeric value, no TTL is applied and entries persist
   until evicted by Redis.
+- `PGVECTOR_DATABASE_URL` *(optional, but required for pgvector-backed
+  features)* – Postgres connection string for the database that has the
+  `pgvector`/`vector` extension enabled. For example:
+  - Local Docker Compose: `postgres://postgres:postgres@localhost:5432/embeddings`
+  - Render Postgres (internal URL): use the `connectionString` value wired via
+    `fromDatabase` in `embeddings-server/render.yaml`.
+
+  When this variable is set, the embeddings server's pgvector client module
+  will lazily create a connection pool and surface clear errors in logs if the
+  database is unreachable or the URL is misconfigured.
+
+  The client currently relies on the default connection pool settings from the
+  `pg` driver. On small or free-tier Postgres plans with low connection limits,
+  you may want to tune pool-related environment variables (see the `pg`
+  documentation) to avoid exhausting available connections under higher
+  concurrency.
 
 ---
 

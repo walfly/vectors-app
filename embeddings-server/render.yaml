@@ -14,10 +14,21 @@ services:
           type: redis
           name: redis
           property: connectionString
+      - key: PGVECTOR_DATABASE_URL
+        fromDatabase:
+          name: pgvector-db
+          property: connectionString
 
   - type: redis
     name: redis
     plan: free # or starter, depending on needs
     maxmemoryPolicy: noeviction
     ipAllowList: [] # Allow internal connections only
+
+databases:
+  - name: pgvector-db
+    plan: free
+    # Free-tier Postgres instances have limited connections and resources.
+    # For production workloads, upgrade this plan and tune the embeddings
+    # server's Postgres pool settings to avoid connection exhaustion.
 
