@@ -264,11 +264,23 @@ pnpm test    # Run Vitest tests for the embeddings pipeline
 The embeddings server can store English Wikipedia article title embeddings in
 Postgres using the `pgvector` extension.
 
-Schema migrations for this table live under `embeddings-server/sql/`.
+Schema migrations for this table live under `embeddings-server/sql/` and are
+automatically applied on embeddings-server startup whenever
+`PGVECTOR_DATABASE_URL` is configured. This automatic runner is the
+recommended way to create and update the schema in most environments.
 
-To create the table on a fresh database (for example, the local Docker
-Compose Postgres instance), point `PGVECTOR_DATABASE_URL` at your Postgres
-instance (for local dev this is often the Docker Compose URL) and run:
+A small migration helper in `embeddings-server/src/lib/migrations.ts` tracks
+applied files in a `embeddings_server_schema_migrations` table and runs any new
+`*.sql` files in lexicographic order before the HTTP server begins listening.
+
+On a fresh database (for example, the local Docker Compose Postgres
+instance), the first time you start the embeddings server with
+`PGVECTOR_DATABASE_URL` set, it will automatically apply
+`sql/001_wikipedia_title_embeddings.sql`.
+
+If you need to inspect or debug a migration manually, you can also apply it
+via `psql`. The initial migration is written with `IF NOT EXISTS` guards on
+both the extension and table, so it is safe to re-run on the same database:
 
 ```bash
 cd embeddings-server
@@ -281,7 +293,7 @@ psql "$PGVECTOR_DATABASE_URL" \
   -f sql/001_wikipedia_title_embeddings.sql
 ```
 
-This migration will:
+The initial migration will:
 
 - Ensure the `vector` extension is installed.
 - Create a `wikipedia_title_embeddings` table with a `vector(384)` column.

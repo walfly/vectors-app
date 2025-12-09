@@ -2,10 +2,10 @@
   "name": "embeddings-server",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
+  "main": "dist/start-with-migrations.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/start-with-migrations.js",
     "backfill:wikipedia-titles": "node dist/lib/wikipedia-titles-backfill.js",
     "backfill:wikipedia-titles:build": "pnpm run build && pnpm run backfill:wikipedia-titles",
     "test": "vitest run"
