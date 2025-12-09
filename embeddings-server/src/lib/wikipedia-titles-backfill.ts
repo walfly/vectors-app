@@ -54,6 +54,8 @@ const MAX_EMBEDDING_BATCH_SIZE = 128;
 
 const EXPECTED_EMBEDDING_DIMENSIONS = 384;
 const WIKIPEDIA_TITLES_LANG = "en" as const;
+const WIKIPEDIA_FETCH_MAX_ATTEMPTS = 3;
+const WIKIPEDIA_FETCH_RETRY_DELAY_MS = 1_000;
 
 function getGlobalFetch(): FetchFn {
   const candidate =
@@ -66,6 +68,71 @@ function getGlobalFetch(): FetchFn {
   }
 
   return candidate;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function fetchWithRetries(
+  url: string,
+  fetchFn: FetchFn,
+  maxAttempts: number,
+  delayMs: number,
+): Promise<FetchResponse> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: FetchResponse;
+
+    try {
+      response = await fetchFn(url);
+    } catch (error) {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+
+      if (attempt === maxAttempts) {
+        throw new Error(
+          `Wikipedia API request failed after ${maxAttempts} attempts: ${normalizedError.message}`,
+        );
+      }
+
+      console.warn(
+        `Wikipedia API request error for ${url}: ${normalizedError.message}; retrying in ${delayMs}ms (attempt ${attempt} of ${maxAttempts}).`,
+      );
+
+      await delay(delayMs);
+      continue;
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    const isServerError = response.status >= 500 && response.status < 600;
+    const errorMessage = `Wikipedia API request failed with status ${response.status} ${response.statusText}`;
+
+    if (!isServerError) {
+      throw new Error(errorMessage);
+    }
+
+    if (attempt === maxAttempts) {
+      throw new Error(
+        `Wikipedia API request failed after ${maxAttempts} attempts: ${errorMessage}`,
+      );
+    }
+
+    console.warn(
+      `Wikipedia API returned ${response.status} ${response.statusText} for ${url}; retrying in ${delayMs}ms (attempt ${attempt} of ${maxAttempts}).`,
+    );
+
+    await delay(delayMs);
+  }
+
+  // This line should be unreachable but satisfies control-flow analysis.
+  throw new Error(
+    `Wikipedia API request failed after ${maxAttempts} attempts for ${url}.`,
+  );
 }
 
 function getTargetTitlesCount(): number {
@@ -151,13 +218,12 @@ async function fetchWikipediaTitles(
     }
 
     const url = buildWikipediaAllPagesUrl(apcontinue, pageSize);
-    const response = await fetchFn(url);
-
-    if (!response.ok) {
-      throw new Error(
-        `Wikipedia API request failed with status ${response.status} ${response.statusText}`,
-      );
-    }
+    const response = await fetchWithRetries(
+      url,
+      fetchFn,
+      WIKIPEDIA_FETCH_MAX_ATTEMPTS,
+      WIKIPEDIA_FETCH_RETRY_DELAY_MS,
+    );
 
     const payload = (await response.json()) as WikipediaAllPagesResponse;
 
