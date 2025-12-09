@@ -2,10 +2,12 @@
   "name": "embeddings-server",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
+  "main": "dist/start-with-migrations.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/start-with-migrations.js",
+    "backfill:wikipedia-titles": "node dist/lib/wikipedia-titles-backfill.js",
+    "backfill:wikipedia-titles:build": "pnpm run build && pnpm run backfill:wikipedia-titles",
     "test": "vitest run"
   },
   "keywords": [],
@@ -17,6 +19,7 @@
     "express": "^5.2.1",
     "onnxruntime-node": "^1.23.2",
     "pg": "^8.16.3",
+    "dotenv": "^16.4.7",
     "redis": "^5.10.0"
   },
   "devDependencies": {

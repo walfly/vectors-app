@@ -259,6 +259,108 @@ pnpm start   # Start the embeddings server
 pnpm test    # Run Vitest tests for the embeddings pipeline
 ```
 
+### Wikipedia title embeddings (pgvector)
+
+The embeddings server can store English Wikipedia article title embeddings in
+Postgres using the `pgvector` extension.
+
+Schema migrations for this table live under `embeddings-server/sql/` and are
+automatically applied on embeddings-server startup whenever
+`PGVECTOR_DATABASE_URL` is configured. This automatic runner is the
+recommended way to create and update the schema in most environments.
+
+A small migration helper in `embeddings-server/src/lib/migrations.ts` tracks
+applied files in a `embeddings_server_schema_migrations` table and runs any new
+`*.sql` files in lexicographic order before the HTTP server begins listening.
+
+On a fresh database (for example, the local Docker Compose Postgres
+instance), the first time you start the embeddings server with
+`PGVECTOR_DATABASE_URL` set, it will automatically apply
+`sql/001_wikipedia_title_embeddings.sql`.
+
+If you need to inspect or debug a migration manually, you can also apply it
+via `psql`. The initial migration is written with `IF NOT EXISTS` guards on
+both the extension and table, so it is safe to re-run on the same database:
+
+```bash
+cd embeddings-server
+
+# Example only – adjust to your environment and avoid using real
+# production credentials in shell history.
+export PGVECTOR_DATABASE_URL="postgres://postgres:postgres@localhost:5432/embeddings"
+
+psql "$PGVECTOR_DATABASE_URL" \
+  -f sql/001_wikipedia_title_embeddings.sql
+```
+
+The initial migration will:
+
+- Ensure the `vector` extension is installed.
+- Create a `wikipedia_title_embeddings` table with a `vector(384)` column.
+
+The `vector(384)` definition matches the output dimensionality of the
+`Xenova/all-MiniLM-L6-v2` model used by the embeddings server. If you switch
+to a different model with a new embedding dimension, you will need to update
+this migration (and any backfill scripts) accordingly.
+
+Once the table contains a representative number of rows (for example, after
+running the backfill script below), you can add an `ivfflat` index on the
+`embedding` column to speed up approximate nearest-neighbor queries. `pgvector`
+recommends creating IVFFlat indexes after the table has data so k-means
+clustering can use real embeddings.
+
+For example:
+
+```sql
+CREATE INDEX IF NOT EXISTS wikipedia_title_embeddings_embedding_ivfflat
+  ON wikipedia_title_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+```
+
+Once the schema is in place, you can **manually** backfill embeddings for a
+corpus of English Wikipedia titles using the existing embeddings pipeline.
+This is an optional, operational step and should not be wired into normal
+local dev, CI, or server startup flows.
+
+```bash
+cd embeddings-server
+
+# Example: run a one-off manual backfill against a local Postgres instance.
+# This may take several minutes and consume CPU/DB resources depending on
+# the target count and hardware. Only run this when you are deliberately
+# populating the `wikipedia_title_embeddings` table.
+PGVECTOR_DATABASE_URL="postgres://postgres:postgres@localhost:5432/embeddings" \
+WIKIPEDIA_TITLES_TARGET_COUNT=20000 \
+pnpm run backfill:wikipedia-titles:build
+```
+
+If you have already built the embeddings server (for example, in CI or inside
+an image), you can skip the extra build step and invoke the compiled script
+directly:
+
+```bash
+cd embeddings-server
+
+PGVECTOR_DATABASE_URL="..." \
+WIKIPEDIA_TITLES_TARGET_COUNT=20000 \
+pnpm run backfill:wikipedia-titles
+```
+
+The backfill script:
+
+- Fetches a configurable number of English Wikipedia titles (defaults to
+  about 20k, clamped between 10k and 50k) from the public MediaWiki API.
+- Batches titles through the existing `Xenova/all-MiniLM-L6-v2` embeddings
+  pipeline with mean pooling and L2 normalization.
+- Upserts rows into the `wikipedia_title_embeddings` table using
+  parameterized SQL and `INSERT ... ON CONFLICT (title) DO UPDATE` so it can
+  be rerun safely.
+
+In production, point `PGVECTOR_DATABASE_URL` at your managed Postgres
+instance. The backfill script is a manual, one-off CLI entrypoint and is
+never invoked automatically by the embeddings server.
+
 ---
 
 ## Deployment
