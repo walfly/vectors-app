@@ -5,6 +5,7 @@ export {
   dotProduct,
   euclideanDistance,
   normalize,
+  slerp,
   scale,
 } from "./math";
 

@@ -59,7 +59,7 @@ const DEFAULT_TARGET_TITLES = 20_000;
 const DEFAULT_EMBEDDING_BATCH_SIZE = 32;
 const MAX_EMBEDDING_BATCH_SIZE = 128;
 
-const EXPECTED_EMBEDDING_DIMENSIONS = 384;
+export const EXPECTED_EMBEDDING_DIMENSIONS = 384;
 const WIKIPEDIA_FETCH_MAX_ATTEMPTS = 3;
 const WIKIPEDIA_FETCH_RETRY_DELAY_MS = 1_000;
 
@@ -90,7 +90,8 @@ function deriveWikipediaLangFromApiUrl(apiUrl: string): string {
   return "en";
 }
 
-const WIKIPEDIA_TITLES_LANG = deriveWikipediaLangFromApiUrl(WIKIPEDIA_API_URL);
+export const WIKIPEDIA_TITLES_LANG =
+  deriveWikipediaLangFromApiUrl(WIKIPEDIA_API_URL);
 
 function getGlobalFetch(): FetchFn {
   const candidate =
