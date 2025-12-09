@@ -586,14 +586,22 @@ async function backfillWikipediaTitles(): Promise<void> {
     const values: unknown[] = [];
     const placeholders: string[] = [];
 
+    const paramsPerRow = 3 as const;
+
     for (let index = 0; index < batch.length; index += 1) {
-      const paramOffset = index * 3;
+      const paramOffset = index * paramsPerRow;
 
       placeholders.push(
         `($${paramOffset + 1}, CAST($${paramOffset + 2}::double precision[] AS vector(384)), $${paramOffset + 3})`,
       );
 
       values.push(batch[index], embeddings[index], WIKIPEDIA_TITLES_LANG);
+    }
+
+    if (values.length !== batch.length * paramsPerRow) {
+      throw new Error(
+        `Internal error: expected ${batch.length * paramsPerRow} SQL parameters for ${batch.length} rows, got ${values.length}.`,
+      );
     }
 
     const sql = `
