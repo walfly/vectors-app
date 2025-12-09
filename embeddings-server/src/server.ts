@@ -16,6 +16,12 @@ import {
   getEmbeddingsPipelineInitPromise,
   isEmbeddingsPipelineReady,
 } from "./lib/embeddings/pipeline";
+import { getPgvectorDatabaseUrl } from "./lib/pgvector";
+import {
+  findWikipediaNearest,
+  parseWikipediaNearestRequest,
+  type WikipediaNearestResponseBody,
+} from "./lib/wikipedia-nearest";
 
 const MAX_INPUTS = 64;
 const MAX_INPUT_LENGTH = 1024; // characters
@@ -499,6 +505,41 @@ function handleHealth(_req: Request, res: Response) {
   sendJson(res, 200, body);
 }
 
+async function handleWikipediaNearest(req: Request, res: Response) {
+  const parsed = parseWikipediaNearestRequest(req.body);
+
+  if ("error" in parsed) {
+    sendJson(res, 400, parsed);
+    return;
+  }
+
+  if (!getPgvectorDatabaseUrl()) {
+    sendJson(res, 503, {
+      error:
+        "Wikipedia nearest-neighbor search is not configured. Set PGVECTOR_DATABASE_URL for the embeddings server.",
+    } satisfies ErrorResponseBody);
+    return;
+  }
+
+  try {
+    const neighbors = await findWikipediaNearest(parsed);
+
+    const body: WikipediaNearestResponseBody = {
+      metric: "cosine",
+      neighbors,
+    };
+
+    sendJson(res, 200, body);
+  } catch (error) {
+    console.error("Wikipedia nearest-neighbor query failed", error);
+
+    sendJson(res, 500, {
+      error: "Failed to query wikipedia_title_embeddings.",
+      details: error instanceof Error ? error.message : String(error),
+    } satisfies ErrorResponseBody);
+  }
+}
+
 const app = express();
 
 app.use(
@@ -531,6 +572,15 @@ app.post("/api/embeddings", (req, res) => {
 });
 
 app.all("/api/embeddings", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send("Method Not Allowed");
+});
+
+app.post("/api/wikipedia-nearest", (req, res) => {
+  void handleWikipediaNearest(req, res);
+});
+
+app.all("/api/wikipedia-nearest", (_req, res) => {
   res.setHeader("Allow", "POST");
   res.status(405).send("Method Not Allowed");
 });

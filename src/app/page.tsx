@@ -1,4 +1,5 @@
 import { EmbeddingPlayground } from "@/components/embedding-playground/EmbeddingPlayground";
+import { IdeasSlider } from "@/components/ideas-slider/IdeasSlider";
 import { VectorArithmeticLab } from "@/components/vector-arithmetic-lab/VectorArithmeticLab";
 
 export default function Home() {
@@ -33,6 +34,21 @@ export default function Home() {
           </div>
 
           <VectorArithmeticLab />
+        </section>
+
+        <section className="border-t border-zinc-900 pt-6">
+          <div className="mb-4 max-w-2xl space-y-1 text-sm text-zinc-400">
+            <h2 className="text-base font-semibold text-zinc-100">
+              Ideas slider
+            </h2>
+            <p>
+              Blend between two natural-language ideas in embedding space and
+              see which Wikipedia titles are closest to each point along the
+              slider.
+            </p>
+          </div>
+
+          <IdeasSlider />
         </section>
       </div>
     </main>

@@ -163,3 +163,55 @@ export function normalize(vector: Vector): number[] {
 
   return result;
 }
+
+export function slerp(a: Vector, b: Vector, t: number): Vector {
+  const fnName = "slerp";
+  assertSameLengthVectors(a, b, fnName);
+
+  if (typeof t !== "number" || !Number.isFinite(t)) {
+    throw new TypeError(
+      `${fnName}: expected 't' to be a finite number between 0 and 1. Received ${String(t)}.`,
+    );
+  }
+
+  if (t < 0 || t > 1) {
+    throw new RangeError(
+      `${fnName}: expected 't' to be in the inclusive range [0, 1]. Received ${t}.`,
+    );
+  }
+
+  // Compute the cosine of the angle between the two vectors. This also
+  // validates that the vectors are non-zero.
+  const cosine = cosineSimilarity(a, b);
+  const clampedCosine = Math.max(-1, Math.min(1, cosine));
+
+  const theta = Math.acos(clampedCosine);
+  const sinTheta = Math.sin(theta);
+
+  // When the vectors are nearly parallel or antiparallel, the standard
+  // slerp formula becomes numerically unstable. In that case, fall back to
+  // a normalized linear interpolation.
+  if (Math.abs(sinTheta) < 1e-6) {
+    const weightA = 1 - t;
+    const weightB = t;
+
+    const blended = new Array<number>(a.length);
+
+    for (let i = 0; i < a.length; i += 1) {
+      blended[i] = weightA * a[i] + weightB * b[i];
+    }
+
+    return normalize(blended);
+  }
+
+  const weightA = Math.sin((1 - t) * theta) / sinTheta;
+  const weightB = Math.sin(t * theta) / sinTheta;
+
+  const result = new Array<number>(a.length);
+
+  for (let i = 0; i < a.length; i += 1) {
+    result[i] = weightA * a[i] + weightB * b[i];
+  }
+
+  return normalize(result);
+}
