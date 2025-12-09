@@ -42,8 +42,11 @@ type WikipediaAllPagesResponse = {
   query?: WikipediaAllPagesQuery;
 };
 
+const DEFAULT_WIKIPEDIA_API_URL =
+  "https://en.wikipedia.org/w/api.php" as const;
+
 const WIKIPEDIA_API_URL =
-  process.env.WIKIPEDIA_API_URL ?? "https://en.wikipedia.org/w/api.php";
+  process.env.WIKIPEDIA_API_URL ?? DEFAULT_WIKIPEDIA_API_URL;
 
 const MIN_TITLES = 10_000;
 const MAX_TITLES = 50_000;
@@ -53,9 +56,37 @@ const DEFAULT_EMBEDDING_BATCH_SIZE = 32;
 const MAX_EMBEDDING_BATCH_SIZE = 128;
 
 const EXPECTED_EMBEDDING_DIMENSIONS = 384;
-const WIKIPEDIA_TITLES_LANG = "en" as const;
 const WIKIPEDIA_FETCH_MAX_ATTEMPTS = 3;
 const WIKIPEDIA_FETCH_RETRY_DELAY_MS = 1_000;
+
+function deriveWikipediaLangFromApiUrl(apiUrl: string): string {
+  try {
+    const url = new URL(apiUrl);
+    const hostname = url.hostname.toLowerCase();
+    const parts = hostname.split(".");
+
+    // Typical MediaWiki API hosts look like `en.wikipedia.org`,
+    // `de.wikipedia.org`, or `simple.wikipedia.org`. When we detect this
+    // pattern, treat the left-most label as the language code.
+    if (
+      parts.length >= 3 &&
+      parts[parts.length - 2] === "wikipedia" &&
+      parts[parts.length - 1] === "org"
+    ) {
+      const candidate = parts[0];
+
+      if (/^[a-z][a-z0-9-]*$/i.test(candidate)) {
+        return candidate.toLowerCase();
+      }
+    }
+  } catch {
+    // Fall through to the default when the URL cannot be parsed.
+  }
+
+  return "en";
+}
+
+const WIKIPEDIA_TITLES_LANG = deriveWikipediaLangFromApiUrl(WIKIPEDIA_API_URL);
 
 function getGlobalFetch(): FetchFn {
   const candidate =
