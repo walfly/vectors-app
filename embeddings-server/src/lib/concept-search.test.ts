@@ -386,6 +386,66 @@ describe("concept search service", () => {
     expect(result.body.details).toContain("Embeddings batch size mismatch");
   });
 
+  it("defaults k to 10 when it is omitted", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const embedding = Array.from({ length: 384 }, (_, index) => index + 1);
+
+    const pipelineFn = vi.fn(async () => ({
+      tolist: () => [embedding],
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const pgvector = await import("./pgvector");
+    const getPgvectorDatabaseUrlMock =
+      pgvector.getPgvectorDatabaseUrl as unknown as ReturnType<typeof vi.fn>;
+    const runPgvectorQueryMock =
+      pgvector.runPgvectorQuery as unknown as ReturnType<typeof vi.fn>;
+
+    getPgvectorDatabaseUrlMock.mockReturnValue(
+      "postgres://user:pass@localhost:5432/db",
+    );
+
+    runPgvectorQueryMock.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: "SELECT",
+      oid: 0,
+      fields: [],
+    } as never);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "default k" });
+
+    expect(result.ok).toBe(true);
+
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.body.k).toBe(10);
+
+    const callArgs = runPgvectorQueryMock.mock.calls[0];
+    expect(callArgs?.[1]?.[1]).toBe(10);
+  });
+
   it("returns ordered neighbors on the happy path", async () => {
     const embeddingsPipeline = await import("./embeddings/pipeline");
     const getEmbeddingsPipelineErrorMock =
@@ -533,60 +593,4 @@ describe("concept search service", () => {
     );
   });
 
-  it("defaults k to 10 when it is omitted", async () => {
-    const embeddingsPipeline = await import("./embeddings/pipeline");
-    const getEmbeddingsPipelineErrorMock =
-      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
-        typeof vi.fn
-      >;
-    const isEmbeddingsPipelineReadyMock =
-      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
-        typeof vi.fn
-      >;
-    const getEmbeddingsPipelineMock =
-      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
-        typeof vi.fn
-      >;
-
-    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
-    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
-
-    const embedding = Array.from({ length: 384 }, (_, index) => index + 1);
-
-    const pipelineFn = vi.fn(async () => ({
-      tolist: () => [embedding],
-    }));
-
-    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
-
-    const pgvector = await import("./pgvector");
-    const getPgvectorDatabaseUrlMock =
-      pgvector.getPgvectorDatabaseUrl as unknown as ReturnType<typeof vi.fn>;
-    const runPgvectorQueryMock =
-      pgvector.runPgvectorQuery as unknown as ReturnType<typeof vi.fn>;
-
-    getPgvectorDatabaseUrlMock.mockReturnValue(
-      "postgres://user:pass@localhost:5432/db",
-    );
-
-    runPgvectorQueryMock.mockResolvedValueOnce({
-      rows: [],
-      rowCount: 0,
-      command: "SELECT",
-      oid: 0,
-      fields: [],
-    } as never);
-
-    const { executeConceptSearch } = await loadConceptSearchModule();
-
-    const result = await executeConceptSearch({ query: "default k" });
-
-    expect(result.ok).toBe(true);
-
-    if (!result.ok) {
-      return;
-    }
-
-    expect(result.body.k).toBe(10);
-  });
 });
