@@ -376,7 +376,28 @@ function extractEmbeddingsFromModelOutput(
     return embeddings;
   }
 
-  throw new Error("Unexpected embeddings output format from model.");
+  const shapeDescription = {
+    hasTolist: typeof rawOutput.tolist === "function",
+    dims: Array.isArray(rawOutput.dims)
+      ? rawOutput.dims.slice(0, 8)
+      : rawOutput.dims,
+    dataLength:
+      rawOutput.data && typeof rawOutput.data.length === "number"
+        ? rawOutput.data.length
+        : undefined,
+  };
+
+  let shapeJson = "<unserializable>";
+
+  try {
+    shapeJson = JSON.stringify(shapeDescription);
+  } catch {
+    // Best-effort diagnostics only; avoid throwing from JSON.stringify itself.
+  }
+
+  throw new Error(
+    `Unexpected embeddings output format from model. Observed shape: ${shapeJson}.`,
+  );
 }
 
 function assertEmbeddingDimensions(embeddings: number[][]): void {
@@ -525,7 +546,7 @@ async function backfillWikipediaTitles(): Promise<void> {
   const embeddingBatchSize = getEmbeddingBatchSize();
 
   console.log(
-    `Targeting approximately ${targetCount} English Wikipedia titles (embedding batch size: ${embeddingBatchSize}).`,
+    `Targeting approximately ${targetCount} ${WIKIPEDIA_TITLES_LANG} Wikipedia titles (embedding batch size: ${embeddingBatchSize}).`,
   );
 
   const fetchFn = getGlobalFetch();
