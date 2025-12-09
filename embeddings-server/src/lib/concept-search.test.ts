@@ -386,6 +386,99 @@ describe("concept search service", () => {
     expect(result.body.details).toContain("Embeddings batch size mismatch");
   });
 
+  it("returns 500 when the embeddings dimension is unexpected", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const data = new Float32Array(383);
+
+    const pipelineFn = vi.fn(async () => ({
+      dims: [1, 383],
+      data: data as unknown as { length: number; [index: number]: number },
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "dimension mismatch" });
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.status).toBe(500);
+    expect(result.body.error).toBe(
+      "Unexpected embeddings output format from model.",
+    );
+    expect(result.body.details).toContain(
+      "Embeddings dimension mismatch: expected 384, got 383.",
+    );
+  });
+
+  it("returns 500 when the embeddings contain non-finite values", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const data = new Float32Array(384);
+    data[42] = Number.NaN;
+
+    const pipelineFn = vi.fn(async () => ({
+      dims: [1, 384],
+      data: data as unknown as { length: number; [index: number]: number },
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "non-finite embeddings" });
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.status).toBe(500);
+    expect(result.body.error).toBe(
+      "Unexpected embeddings output format from model.",
+    );
+    expect(result.body.details).toContain(
+      "Embeddings model returned non-finite value at [0, 42]",
+    );
+  });
+
   it("defaults k to 10 when it is omitted", async () => {
     const embeddingsPipeline = await import("./embeddings/pipeline");
     const getEmbeddingsPipelineErrorMock =
