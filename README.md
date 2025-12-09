@@ -234,6 +234,11 @@ internal dependency.
 
 - `POST /api/embeddings` – Run the embeddings model and return normalized
   vectors plus metadata.
+- `POST /api/concepts/search` – Run concept search over Wikipedia article
+  titles stored in pgvector. Accepts a JSON body with a `query` string and
+  optional `k` (number of neighbors to return, default 10, max 100), and
+  returns the query, `k`, model name, and an ordered list of nearest
+  neighbors with `{ id, title, score, url }`.
 - `GET  /api/warm` – Ensure the model is initialized and report status.
 - `GET  /api/health` – Report embeddings model health only (no KV checks).
 

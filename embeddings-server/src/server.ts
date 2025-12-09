@@ -16,6 +16,7 @@ import {
   getEmbeddingsPipelineInitPromise,
   isEmbeddingsPipelineReady,
 } from "./lib/embeddings/pipeline";
+import { executeConceptSearch } from "./lib/concept-search";
 
 const MAX_INPUTS = 64;
 const MAX_INPUT_LENGTH = 1024; // characters
@@ -411,6 +412,24 @@ async function handleEmbeddings(req: Request, res: Response) {
   }
 }
 
+async function handleConceptSearch(req: Request, res: Response) {
+  try {
+    const result = await executeConceptSearch(req.body);
+
+    if (!result.ok) {
+      sendJson(res, result.status, result.body, result.headers);
+      return;
+    }
+
+    sendJson(res, 200, result.body);
+  } catch (error) {
+    sendJson(res, 500, {
+      error: "Failed to execute concept search.",
+      details: error instanceof Error ? error.message : String(error),
+    } satisfies ErrorResponseBody);
+  }
+}
+
 async function handleWarm(_req: Request, res: Response) {
   ensureEmbeddingsPipelineInitializing();
 
@@ -531,6 +550,15 @@ app.post("/api/embeddings", (req, res) => {
 });
 
 app.all("/api/embeddings", (req, res) => {
+  res.setHeader("Allow", "POST");
+  res.status(405).send("Method Not Allowed");
+});
+
+app.post("/api/concepts/search", (req, res) => {
+  void handleConceptSearch(req, res);
+});
+
+app.all("/api/concepts/search", (req, res) => {
   res.setHeader("Allow", "POST");
   res.status(405).send("Method Not Allowed");
 });
