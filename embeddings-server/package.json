@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "onnxruntime-node": "^1.23.2",
     "pg": "^8.16.3",
+    "dotenv": "^16.4.7",
     "redis": "^5.10.0"
   },
   "devDependencies": {

@@ -1,6 +1,10 @@
 // NOTE: This module is intended as a manual CLI entrypoint only.
 // It must not be invoked from the HTTP server or any automatic job.
 
+import * as dotenv from "dotenv";
+dotenv.config();
+
+
 import type { EmbeddingsPipeline } from "./embeddings/pipeline";
 import {
   MODEL_ID,
