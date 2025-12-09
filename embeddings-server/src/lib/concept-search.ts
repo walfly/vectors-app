@@ -368,11 +368,19 @@ async function embedQuery(
   }
 }
 
-function buildWikipediaUrl(title: string, lang: string | null | undefined) {
+function buildWikipediaUrl(
+  title: string,
+  lang: string | null | undefined,
+): string | null {
   const normalizedLang = (lang ?? "en").trim() || "en";
   const hostname = `${normalizedLang}.wikipedia.org`;
 
   const normalizedTitle = title.trim().replace(/\s+/g, "_");
+
+  if (!normalizedTitle) {
+    return null;
+  }
+
   const encodedTitle = encodeURIComponent(normalizedTitle);
 
   return `https://${hostname}/wiki/${encodedTitle}`;
@@ -433,12 +441,22 @@ LIMIT $2;
     };
   }
 
-  const neighbors: ConceptNeighbor[] = result.rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    score: distanceToScore(row.distance),
-    url: buildWikipediaUrl(row.title, row.lang),
-  }));
+  const neighbors: ConceptNeighbor[] = [];
+
+  for (const row of result.rows) {
+    const url = buildWikipediaUrl(row.title, row.lang);
+
+    if (!url) {
+      continue;
+    }
+
+    neighbors.push({
+      id: row.id,
+      title: row.title,
+      score: distanceToScore(row.distance),
+      url,
+    });
+  }
 
   return { ok: true, neighbors };
 }

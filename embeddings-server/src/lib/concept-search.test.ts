@@ -49,7 +49,7 @@ describe("concept search service", () => {
   it("returns 400 when 'query' is not a string", async () => {
     const { executeConceptSearch } = await loadConceptSearchModule();
 
-    const invalidBodies = [{ query: 123 }, { query: [] }];
+    const invalidBodies = [{}, { query: 123 }, { query: [] }];
 
     for (const body of invalidBodies) {
       // eslint-disable-next-line no-await-in-loop
@@ -300,6 +300,75 @@ describe("concept search service", () => {
     expect(neighbors[0]?.score).toBeGreaterThan(neighbors[1]?.score ?? 0);
     expect(neighbors[0]?.url).toBe(
       "https://en.wikipedia.org/wiki/Beta",
+    );
+  });
+
+  it("omits neighbors with empty or whitespace-only titles", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const embedding = Array.from({ length: 384 }, (_, index) => index + 1);
+
+    const pipelineFn = vi.fn(async () => ({
+      tolist: () => [embedding],
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const pgvector = await import("./pgvector");
+    const getPgvectorDatabaseUrlMock =
+      pgvector.getPgvectorDatabaseUrl as unknown as ReturnType<typeof vi.fn>;
+    const runPgvectorQueryMock =
+      pgvector.runPgvectorQuery as unknown as ReturnType<typeof vi.fn>;
+
+    getPgvectorDatabaseUrlMock.mockReturnValue(
+      "postgres://user:pass@localhost:5432/db",
+    );
+
+    runPgvectorQueryMock.mockResolvedValueOnce({
+      rows: [
+        { id: 1, title: "  ", lang: "en", distance: 0.1 },
+        { id: 2, title: "Valid title", lang: "en", distance: 0.2 },
+      ],
+      rowCount: 2,
+      command: "SELECT",
+      oid: 0,
+      fields: [],
+    } as never);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({
+      query: "test query",
+      k: 2,
+    });
+
+    expect(result.ok).toBe(true);
+
+    if (!result.ok) {
+      return;
+    }
+
+    const neighbors = result.body.neighbors;
+    expect(neighbors).toHaveLength(1);
+    expect(neighbors[0]?.id).toBe(2);
+    expect(neighbors[0]?.title).toBe("Valid title");
+    expect(neighbors[0]?.url).toBe(
+      "https://en.wikipedia.org/wiki/Valid_title",
     );
   });
 });
