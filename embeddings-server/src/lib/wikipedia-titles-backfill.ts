@@ -176,14 +176,23 @@ function getTargetTitlesCount(): number {
   const parsed = Number.parseInt(raw, 10);
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(
+      `WIKIPEDIA_TITLES_TARGET_COUNT='${raw}' is invalid; using default ${DEFAULT_TARGET_TITLES}.`,
+    );
     return DEFAULT_TARGET_TITLES;
   }
 
   if (parsed < MIN_TITLES) {
+    console.warn(
+      `WIKIPEDIA_TITLES_TARGET_COUNT=${parsed} is below MIN_TITLES=${MIN_TITLES}; clamping to ${MIN_TITLES}.`,
+    );
     return MIN_TITLES;
   }
 
   if (parsed > MAX_TITLES) {
+    console.warn(
+      `WIKIPEDIA_TITLES_TARGET_COUNT=${parsed} exceeds MAX_TITLES=${MAX_TITLES}; clamping to ${MAX_TITLES}.`,
+    );
     return MAX_TITLES;
   }
 
@@ -200,10 +209,16 @@ function getEmbeddingBatchSize(): number {
   const parsed = Number.parseInt(raw, 10);
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(
+      `WIKIPEDIA_EMBEDDING_BATCH_SIZE='${raw}' is invalid; using default ${DEFAULT_EMBEDDING_BATCH_SIZE}.`,
+    );
     return DEFAULT_EMBEDDING_BATCH_SIZE;
   }
 
   if (parsed > MAX_EMBEDDING_BATCH_SIZE) {
+    console.warn(
+      `WIKIPEDIA_EMBEDDING_BATCH_SIZE=${parsed} exceeds MAX_EMBEDDING_BATCH_SIZE=${MAX_EMBEDDING_BATCH_SIZE}; clamping to ${MAX_EMBEDDING_BATCH_SIZE}.`,
+    );
     return MAX_EMBEDDING_BATCH_SIZE;
   }
 
