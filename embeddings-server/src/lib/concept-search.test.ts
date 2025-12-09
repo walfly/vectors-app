@@ -46,6 +46,61 @@ describe("concept search service", () => {
     expect(result.body.error).toContain("expected a JSON object");
   });
 
+  it("returns 400 when 'query' is not a string", async () => {
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const invalidBodies = [{ query: 123 }, { query: [] }];
+
+    for (const body of invalidBodies) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await executeConceptSearch(body);
+
+      expect(result.ok).toBe(false);
+
+      if (!result.ok) {
+        expect(result.status).toBe(400);
+        expect(result.body.error).toContain("'query' must be a string");
+      }
+    }
+  });
+
+  it("returns 400 when 'query' is empty or whitespace-only", async () => {
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const invalidBodies = [{ query: "" }, { query: "   " }, { query: "\n\t" }];
+
+    for (const body of invalidBodies) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await executeConceptSearch(body);
+
+      expect(result.ok).toBe(false);
+
+      if (!result.ok) {
+        expect(result.status).toBe(400);
+        expect(result.body.error).toContain(
+          "'query' must be a non-empty string",
+        );
+      }
+    }
+  });
+
+  it("returns 400 when 'query' exceeds the maximum length", async () => {
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const longQuery = "x".repeat(1025);
+
+    const result = await executeConceptSearch({ query: longQuery });
+
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.body.error).toContain(
+        "'query' must be at most 1024 characters long",
+      );
+    }
+  });
+
   it("returns 400 for invalid k values", async () => {
     const { executeConceptSearch } = await loadConceptSearchModule();
 
