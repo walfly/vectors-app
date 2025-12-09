@@ -168,6 +168,12 @@ async function fetchWikipediaTitles(
     }
 
     for (const page of pages) {
+      // Only index main-namespace (article) titles. Other namespaces are
+      // intentionally excluded from embeddings.
+      if (page.ns !== 0) {
+        continue;
+      }
+
       const title = page.title?.trim();
 
       if (title) {
@@ -283,6 +289,20 @@ function assertEmbeddingDimensions(embeddings: number[][]): void {
       "Embeddings model returned rows with inconsistent dimensions.",
     );
   }
+
+  for (let rowIndex = 0; rowIndex < embeddings.length; rowIndex += 1) {
+    const row = embeddings[rowIndex];
+
+    for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
+      const value = row[columnIndex];
+
+      if (!Number.isFinite(value)) {
+        throw new Error(
+          `Embeddings model returned non-finite value at [${rowIndex}, ${columnIndex}] (NaN/Infinity). Aborting backfill.`,
+        );
+      }
+    }
+  }
 }
 
 async function embedTitlesBatch(
@@ -382,14 +402,6 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-const UPSERT_SQL = `
-INSERT INTO wikipedia_title_embeddings (title, embedding, lang)
-VALUES ($1, CAST($2::double precision[] AS vector(384)), $3)
-ON CONFLICT (title) DO UPDATE SET
-  embedding = EXCLUDED.embedding,
-  lang = EXCLUDED.lang;
-` as const;
-
 async function backfillWikipediaTitles(): Promise<void> {
   console.log(
     "Starting Wikipedia title embeddings backfill into wikipedia_title_embeddings...",
@@ -438,18 +450,30 @@ async function backfillWikipediaTitles(): Promise<void> {
       );
     }
 
+    const values: unknown[] = [];
+    const placeholders: string[] = [];
+
     for (let index = 0; index < batch.length; index += 1) {
-      const title = batch[index];
-      const embedding = embeddings[index];
+      const paramOffset = index * 3;
 
-      await runPgvectorQuery(UPSERT_SQL, [
-        title,
-        embedding,
-        WIKIPEDIA_TITLES_LANG,
-      ] as const);
+      placeholders.push(
+        `($${paramOffset + 1}, CAST($${paramOffset + 2}::double precision[] AS vector(384)), $${paramOffset + 3})`,
+      );
 
-      processed += 1;
+      values.push(batch[index], embeddings[index], WIKIPEDIA_TITLES_LANG);
     }
+
+    const sql = `
+INSERT INTO wikipedia_title_embeddings (title, embedding, lang)
+VALUES ${placeholders.join(", ")}
+ON CONFLICT (title) DO UPDATE SET
+  embedding = EXCLUDED.embedding,
+  lang = EXCLUDED.lang;
+` as const;
+
+    await runPgvectorQuery(sql, values);
+
+    processed += batch.length;
 
     console.log(
       `Upserted ${processed} / ${titles.length} Wikipedia titles into wikipedia_title_embeddings...`,
