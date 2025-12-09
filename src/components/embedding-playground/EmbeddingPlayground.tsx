@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { EmbeddingPlaygroundComparisonPanel } from "./EmbeddingPlaygroundComparisonPanel";
 import { EmbeddingPlaygroundExperiments } from "./EmbeddingPlaygroundExperiments";
@@ -40,6 +40,32 @@ export function EmbeddingPlayground() {
   const [secondaryComparisonId, setSecondaryComparisonId] =
     useState<string | null>(null);
   const [comparisonFocusIndex, setComparisonFocusIndex] = useState(0);
+
+  const hasWarmedRef = useRef(false);
+
+  // Best-effort warm-up of the embeddings server so the first
+  // embeddings request is less likely to hit a cold start.
+  useEffect(() => {
+    if (typeof window === "undefined" || hasWarmedRef.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    hasWarmedRef.current = true;
+
+    void fetch("/api/warm", {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    }).catch(() => {
+      // Ignore warm-up failures; the playground can still function.
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   // Persist experiments to localStorage whenever they change.
   useEffect(() => {
