@@ -125,6 +125,36 @@ describe("concept search service", () => {
     }
   });
 
+  it("returns 503 with Retry-After when the embeddings model is initializing", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(false);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "climate change" });
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.status).toBe(503);
+    expect(result.body.status).toBe("initializing");
+    expect(result.body.model).toBe("TestModel");
+    expect(result.headers?.["Retry-After"]).toBe("5");
+  });
+
   it("returns 503 when PGVECTOR_DATABASE_URL is not configured", async () => {
     const embeddingsPipeline = await import("./embeddings/pipeline");
     const getEmbeddingsPipelineErrorMock =
@@ -223,6 +253,137 @@ describe("concept search service", () => {
     expect(result.status).toBe(503);
     expect(result.body.error).toBe("Failed to query concept search database.");
     expect(result.body.details).toContain("connection refused");
+  });
+
+  it("returns 500 when the embeddings pipeline returns an empty list", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const pipelineFn = vi.fn(async () => ({
+      tolist: () => [],
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "unexpected output" });
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.status).toBe(500);
+    expect(result.body.error).toBe(
+      "Unexpected embeddings output format from model.",
+    );
+    expect(result.body.details).toContain(
+      "Embeddings model returned empty or invalid list output.",
+    );
+  });
+
+  it("returns 500 when embeddings tensor data length does not match dims", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const pipelineFn = vi.fn(async () => ({
+      dims: [1, 4],
+      data: { length: 3, 0: 1, 1: 2, 2: 3 },
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "tensor mismatch" });
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.status).toBe(500);
+    expect(result.body.error).toBe(
+      "Unexpected embeddings output format from model.",
+    );
+    expect(result.body.details).toContain(
+      "Embeddings model returned data with unexpected length:",
+    );
+  });
+
+  it("returns 500 when embeddings batch size does not match the expected size", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const data = [1, 2, 3, 4];
+
+    const pipelineFn = vi.fn(async () => ({
+      dims: [2, 2],
+      data,
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "batch mismatch" });
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      return;
+    }
+
+    expect(result.status).toBe(500);
+    expect(result.body.error).toBe(
+      "Unexpected embeddings output format from model.",
+    );
+    expect(result.body.details).toContain("Embeddings batch size mismatch");
   });
 
   it("returns ordered neighbors on the happy path", async () => {
@@ -370,5 +531,62 @@ describe("concept search service", () => {
     expect(neighbors[0]?.url).toBe(
       "https://en.wikipedia.org/wiki/Valid_title",
     );
+  });
+
+  it("defaults k to 10 when it is omitted", async () => {
+    const embeddingsPipeline = await import("./embeddings/pipeline");
+    const getEmbeddingsPipelineErrorMock =
+      embeddingsPipeline.getEmbeddingsPipelineError as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const isEmbeddingsPipelineReadyMock =
+      embeddingsPipeline.isEmbeddingsPipelineReady as unknown as ReturnType<
+        typeof vi.fn
+      >;
+    const getEmbeddingsPipelineMock =
+      embeddingsPipeline.getEmbeddingsPipeline as unknown as ReturnType<
+        typeof vi.fn
+      >;
+
+    getEmbeddingsPipelineErrorMock.mockReturnValue(null);
+    isEmbeddingsPipelineReadyMock.mockReturnValue(true);
+
+    const embedding = Array.from({ length: 384 }, (_, index) => index + 1);
+
+    const pipelineFn = vi.fn(async () => ({
+      tolist: () => [embedding],
+    }));
+
+    getEmbeddingsPipelineMock.mockReturnValue(pipelineFn);
+
+    const pgvector = await import("./pgvector");
+    const getPgvectorDatabaseUrlMock =
+      pgvector.getPgvectorDatabaseUrl as unknown as ReturnType<typeof vi.fn>;
+    const runPgvectorQueryMock =
+      pgvector.runPgvectorQuery as unknown as ReturnType<typeof vi.fn>;
+
+    getPgvectorDatabaseUrlMock.mockReturnValue(
+      "postgres://user:pass@localhost:5432/db",
+    );
+
+    runPgvectorQueryMock.mockResolvedValueOnce({
+      rows: [],
+      rowCount: 0,
+      command: "SELECT",
+      oid: 0,
+      fields: [],
+    } as never);
+
+    const { executeConceptSearch } = await loadConceptSearchModule();
+
+    const result = await executeConceptSearch({ query: "default k" });
+
+    expect(result.ok).toBe(true);
+
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.body.k).toBe(10);
   });
 });
