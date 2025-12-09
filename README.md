@@ -285,13 +285,26 @@ This migration will:
 
 - Ensure the `vector` extension is installed.
 - Create a `wikipedia_title_embeddings` table with a `vector(384)` column.
-- Add an `ivfflat` index on the `embedding` column tuned for cosine
-  similarity search (with a default `lists = 100`).
 
 The `vector(384)` definition matches the output dimensionality of the
 `Xenova/all-MiniLM-L6-v2` model used by the embeddings server. If you switch
 to a different model with a new embedding dimension, you will need to update
 this migration (and any backfill scripts) accordingly.
+
+Once the table contains a representative number of rows (for example, after
+running the backfill script below), you can add an `ivfflat` index on the
+`embedding` column to speed up approximate nearest-neighbor queries. `pgvector`
+recommends creating IVFFlat indexes after the table has data so k-means
+clustering can use real embeddings.
+
+For example:
+
+```sql
+CREATE INDEX IF NOT EXISTS wikipedia_title_embeddings_embedding_ivfflat
+  ON wikipedia_title_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);
+```
 
 Once the schema is in place, you can **manually** backfill embeddings for a
 corpus of English Wikipedia titles using the existing embeddings pipeline.
