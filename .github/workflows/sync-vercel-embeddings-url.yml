@@ -1,0 +1,188 @@
+name: Sync Vercel preview embeddings URL from Render
+
+on:
+  # Trigger whenever a deployment status is created. Render's PR previews
+  # show up as GitHub deployments with an environment URL that points to
+  # the preview instance on Render.
+  deployment_status:
+    types: [created]
+
+jobs:
+  sync-embeddings-url:
+    name: Update Vercel EMBEDDINGS_SERVER_URL
+    # Only run for successful deployments that expose an environment URL.
+    if: >-
+      github.event_name == 'deployment_status' &&
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment_status.environment_url != null
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      deployments: read
+      pull-requests: read
+
+    env:
+      # Required: set these in the repo's Secrets.
+      # - VERCEL_PROJECT_ID: The Vercel project id or name for this app.
+      # - VERCEL_TOKEN:      A Vercel personal access token with access to the project.
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # Name of the env var used by the Next.js app to reach the embeddings server.
+      EMBEDDINGS_ENV_KEY: EMBEDDINGS_SERVER_URL
+
+    steps:
+      - name: Validate required inputs
+        run: |
+          if [ -z "${VERCEL_PROJECT_ID}" ] || [ -z "${VERCEL_TOKEN}" ]; then
+            echo "VERCEL_PROJECT_ID and VERCEL_TOKEN must be configured as repository secrets." >&2
+            exit 1
+          fi
+
+      - name: Sync Vercel preview env from Render deployment
+        uses: actions/github-script@v8
+        env:
+          VERCEL_PROJECT_ID: ${{ env.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ env.VERCEL_TOKEN }}
+          EMBEDDINGS_ENV_KEY: ${{ env.EMBEDDINGS_ENV_KEY }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const vercelProjectId = process.env.VERCEL_PROJECT_ID;
+            const vercelToken = process.env.VERCEL_TOKEN;
+            const envKey = process.env.EMBEDDINGS_ENV_KEY || 'EMBEDDINGS_SERVER_URL';
+
+            if (!vercelProjectId || !vercelToken) {
+              core.setFailed('VERCEL_PROJECT_ID and VERCEL_TOKEN must be set as secrets.');
+              return;
+            }
+
+            if (context.eventName !== 'deployment_status') {
+              core.info(`Unsupported event: ${context.eventName}`);
+              return;
+            }
+
+            const deployment = context.payload.deployment;
+            const status = context.payload.deployment_status;
+
+            if (!status || status.state !== 'success') {
+              core.info('Deployment status is not success; skipping.');
+              return;
+            }
+
+            let renderUrl = status.environment_url || status.target_url;
+
+            if (!renderUrl) {
+              core.info('No environment_url on deployment status; skipping.');
+              return;
+            }
+
+            // Normalize URL (trim trailing slashes) so the app can safely
+            // append /api/embeddings, /api/warm, /api/health, etc.
+            renderUrl = renderUrl.replace(/\/+$/, '');
+
+            // Only handle Render preview deployments. If the URL host is not
+            // a Render domain, skip syncing to avoid cross-provider updates.
+            try {
+              const urlObject = new URL(renderUrl);
+              const hostname = urlObject.hostname.toLowerCase();
+
+              const allowedRenderHostSuffixes = ['onrender.com'];
+
+              // Render preview deployments live on subdomains of onrender.com,
+              // e.g. my-app.onrender.com. We also allow bare onrender.com in
+              // case Render ever uses it directly. Custom domains are
+              // intentionally not synced here.
+              const isRenderHost = allowedRenderHostSuffixes.some((suffix) =>
+                hostname === suffix || hostname.endsWith(`.${suffix}`),
+              );
+
+              if (!isRenderHost) {
+                core.info(
+                  `Deployment URL '${renderUrl}' is not a Render host (hostname='${hostname}', allowed suffixes='${allowedRenderHostSuffixes.join(",")}'); skipping Vercel sync.`,
+                );
+                return;
+              }
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : typeof error === 'string'
+                    ? error
+                    : String(error);
+
+              core.warning(
+                `Deployment URL '${renderUrl}' is not a valid URL; skipping Vercel sync. Error: ${message}`,
+              );
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = deployment?.sha;
+
+            let branch = undefined;
+
+            if (sha) {
+              try {
+                const prsResponse = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: sha,
+                });
+
+                const pr = prsResponse.data.find((p) => p.state === 'open') ?? prsResponse.data[0];
+
+                if (pr) {
+                  branch = pr.head.ref;
+                  core.info(`Derived branch '${branch}' from PR #${pr.number} for commit ${sha}.`);
+                }
+              } catch (error) {
+                core.warning(`Failed to list PRs for commit ${sha}: ${error}`);
+              }
+            }
+
+            if (!branch && deployment?.ref) {
+              // Fallback to the deployment ref, normalizing refs/heads/* if present.
+              branch = deployment.ref.replace(/^refs\/heads\//, '');
+              core.info(`Falling back to deployment ref as branch: '${branch}'.`);
+            }
+
+            if (!branch) {
+              core.info('Could not determine git branch for deployment; skipping Vercel sync.');
+              return;
+            }
+
+            core.info(`Syncing Vercel env '${envKey}' for branch '${branch}' to '${renderUrl}'.`);
+
+            const url = `https://api.vercel.com/v10/projects/${encodeURIComponent(vercelProjectId)}/env?upsert=true`;
+
+            const body = {
+              key: envKey,
+              value: renderUrl,
+              type: 'plain',
+              target: ['preview'],
+              gitBranch: branch,
+              comment: 'Synced from Render preview deployment via GitHub Actions.',
+            };
+
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${vercelToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(body),
+            });
+
+            if (!response.ok) {
+              const text = await response.text();
+              core.setFailed(`Vercel API error ${response.status} ${response.statusText}: ${text}`);
+              return;
+            }
+
+            const data = await response.json();
+            core.info(`Vercel environment variable '${envKey}' updated for branch '${branch}'.`);
+
+            return data;
